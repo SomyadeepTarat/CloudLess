@@ -221,8 +221,3 @@ def predict_file(file_path):
 # STEP 9: TEST ON A FILE
 # -----------------------------
 # Change this to any file you want
-
-import joblib
-
-joblib.dump(model, "model.pkl")
-print("Model saved as model.pkl")

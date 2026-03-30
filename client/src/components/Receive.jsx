@@ -1,22 +1,15 @@
 import { useContext, useMemo, useRef, useState } from "react";
 import AppContext from "../context/AppContext";
-
-const suggestGpuSize = (file) => {
-  if (!file) return 0;
-
-  const sizeInMb = file.size / (1024 * 1024);
-
-  if (sizeInMb < 0.5) return 4;
-  if (sizeInMb < 2) return 8;
-  if (sizeInMb < 5) return 12;
-  return 16;
-};
+import * as api from "../services/api";
 
 export default function Receive({ user }) {
   const [selectedFile, setSelectedFile] = useState(null);
   const [gpu, setGpu] = useState(false);
   const [gpuSize, setGpuSize] = useState("");
   const [suggestedGpuSize, setSuggestedGpuSize] = useState(0);
+  const [recommendedRamMb, setRecommendedRamMb] = useState(null);
+  const [cpuLoad, setCpuLoad] = useState("");
+  const [analysisLoading, setAnalysisLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const { jobs, loading, submitNewJob } = useContext(AppContext);
@@ -34,6 +27,40 @@ export default function Receive({ user }) {
     return [...pending, ...completed].slice(0, 8);
   }, [jobs]);
 
+  const analyzeSelectedFile = async (file) => {
+    if (!file) {
+      setRecommendedRamMb(null);
+      setSuggestedGpuSize(0);
+      setCpuLoad("");
+      return;
+    }
+
+    const code = await file.text();
+
+    if (!code.trim()) {
+      throw new Error("Uploaded file is empty");
+    }
+
+    setAnalysisLoading(true);
+
+    try {
+      const result = await api.recommendResources({
+        code,
+        filename: file.name,
+      });
+
+      setRecommendedRamMb(result.recommendedRamMb);
+      setSuggestedGpuSize(result.recommendedRamGb);
+      setCpuLoad(result.cpuLoad || "");
+
+      if (gpu) {
+        setGpuSize(String(result.recommendedRamGb));
+      }
+    } finally {
+      setAnalysisLoading(false);
+    }
+  };
+
   const handleSubmit = async () => {
     if (!selectedFile) {
       setError("Upload a Python file to submit a job");
@@ -49,6 +76,11 @@ export default function Receive({ user }) {
 
     if (gpu && (parseFloat(gpuSize) <= 0 || !gpuSize)) {
       setError("GPU Size must be greater than 0GB");
+      setSuccess("");
+      return;
+    }
+    if (gpu && !suggestedGpuSize) {
+      setError("Wait for file analysis to finish before requesting GPU");
       setSuccess("");
       return;
     }
@@ -88,6 +120,8 @@ export default function Receive({ user }) {
       setGpu(false);
       setGpuSize("");
       setSuggestedGpuSize(0);
+      setRecommendedRamMb(null);
+      setCpuLoad("");
       if (fileInputRef.current) {
         fileInputRef.current.value = "";
       }
@@ -112,19 +146,35 @@ export default function Receive({ user }) {
             type="file"
             accept=".py"
             style={{ display: 'none' }}
-            onChange={(e) => {
+            onChange={async (e) => {
               const file = e.target.files?.[0] || null;
-              const suggested = file ? suggestGpuSize(file) : 0;
               setSelectedFile(file);
-              setSuggestedGpuSize(suggested);
-              setGpuSize(gpu && suggested ? String(suggested) : "");
+              setSuggestedGpuSize(0);
+              setRecommendedRamMb(null);
+              setCpuLoad("");
+              setGpuSize("");
               setError("");
               setSuccess("");
+
+              if (!file) {
+                return;
+              }
+
+              if (!file.name.toLowerCase().endsWith(".py")) {
+                setError("Only Python files are allowed");
+                return;
+              }
+
+              try {
+                await analyzeSelectedFile(file);
+              } catch (err) {
+                setError(err.message || "Unable to analyze the uploaded file");
+              }
             }}
           />
           <button
             type="button"
-            className="btn-primary"
+            className="btn-primary cursor-target"
             style={{ marginTop: '0.5rem' }}
             onClick={() => fileInputRef.current?.click()}
           >
@@ -133,6 +183,16 @@ export default function Receive({ user }) {
           {selectedFile && (
             <span style={{ color: '#94a3b8', fontSize: '0.8rem', textAlign: 'center' }}>
               Selected: {selectedFile.name}
+            </span>
+          )}
+          {analysisLoading && (
+            <span style={{ color: '#d8b4fe', fontSize: '0.8rem', textAlign: 'center' }}>
+              Processing file to estimate required RAM...
+            </span>
+          )}
+          {!analysisLoading && recommendedRamMb !== null && (
+            <span style={{ color: '#d8b4fe', fontSize: '0.8rem', textAlign: 'center' }}>
+              Recommended RAM: {recommendedRamMb.toFixed(2)} MB{cpuLoad ? ` • CPU Load: ${cpuLoad}` : ""}
             </span>
           )}
         </div>
@@ -146,14 +206,12 @@ export default function Receive({ user }) {
               setGpu(e.target.checked);
               if (!e.target.checked) {
                 setGpuSize("");
-                setSuggestedGpuSize(0);
                 setError("");
-              } else if (selectedFile) {
-                const suggested = suggestGpuSize(selectedFile);
-                setSuggestedGpuSize(suggested);
-                setGpuSize(String(suggested));
+              } else if (selectedFile && suggestedGpuSize) {
+                setGpuSize(String(suggestedGpuSize));
               }
             }}
+            disabled={!selectedFile || analysisLoading}
           />
           <label htmlFor="gpu" className="checkbox-label">Requires GPU</label>
         </div>
@@ -195,7 +253,7 @@ export default function Receive({ user }) {
         {error && <span style={{ color: '#f87171', fontSize: '0.75rem', textAlign: 'center' }}>{error}</span>}
         {success && <span style={{ color: '#d8b4fe', fontSize: '0.75rem', textAlign: 'center' }}>{success}</span>}
 
-        <button className="btn-primary" style={{ background: '#36303c', color: '#b291d9' }} onClick={handleSubmit} disabled={loading}>
+        <button className="btn-primary cursor-target" style={{ background: '#36303c', color: '#b291d9' }} onClick={handleSubmit} disabled={loading}>
           {loading ? "Submitting..." : "Submit Job"}
         </button>
       </div>
