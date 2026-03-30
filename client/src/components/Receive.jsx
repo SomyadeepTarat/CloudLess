@@ -6,19 +6,75 @@ const SAMPLE_JOBS = [
   { id: "8819", name: "preprocess.py", status: "failed", submitted: "11:09" },
 ];
 
-const STATUS_COLOR = {
-  running: "#4ade80",
-  complete: "#38bdf8",
-  failed: "#f87171",
-  queued: "#facc15",
-};
+function analyzeScript(scriptName) {
+  const name = scriptName.toLowerCase();
+  let suggested_ram = 2;
+  let reason = "standard script";
+
+  if (name.includes("train")) {
+    suggested_ram = 8;
+    reason = "training scripts typically need 8GB+";
+  }
+  if (name.includes("transformer") || name.includes("bert") || name.includes("gpt")) {
+    suggested_ram = 16;
+    reason = "transformer models typically need 16GB+";
+  }
+  if (name.includes("diffusion") || name.includes("stable")) {
+    suggested_ram = 16;
+    reason = "diffusion models typically need 16GB+";
+  }
+  if (name.includes("preprocess") || name.includes("data")) {
+    suggested_ram = 4;
+    reason = "data processing detected";
+  }
+  if (name.includes("inference") || name.includes("predict")) {
+    suggested_ram = 4;
+    reason = "inference is lighter than training";
+  }
+
+  return { suggested_ram, reason };
+}
+
+function extractFeatures(code) {
+  return {
+    code_length: code.length,
+    loops: (code.match(/for |while /g) || []).length,
+    functions: (code.match(/def /g) || []).length,
+    function_calls: (code.match(/\w+\(/g) || []).length,
+    lists: (code.match(/\[.*?\]/g) || []).length,
+    dicts: (code.match(/{.*?}/g) || []).length,
+    conditions: (code.match(/if /g) || []).length,
+    classes: (code.match(/class /g) || []).length,
+    file_io_ops: (code.match(/open\(/g) || []).length,
+    recursion_depth: 0,
+    uses_numpy: code.includes("numpy") ? 1 : 0,
+    uses_pandas: code.includes("pandas") ? 1 : 0,
+    uses_torch: code.includes("torch") ? 1 : 0,
+    uses_tensorflow: code.includes("tensorflow") ? 1 : 0,
+  };
+}
 
 export default function Receive() {
   const [script, setScript] = useState("");
+  const [fileName, setFileName] = useState("");
+  const [features, setFeatures] = useState(null);
   const [ram, setRam] = useState("");
   const [gpu, setGpu] = useState(false);
   const [jobs, setJobs] = useState(SAMPLE_JOBS);
   const [submitted, setSubmitted] = useState(false);
+  const [suggestion, setSuggestion] = useState(null);
+
+  const handleScriptChange = (val) => {
+    setScript(val);
+    if (val.trim()) {
+      const result = analyzeScript(val);
+      setSuggestion(result);
+      setRam(String(result.suggested_ram));
+    } else {
+      setSuggestion(null);
+      setRam("");
+    }
+  };
 
   const handleSubmit = () => {
     if (!script.trim()) return;
@@ -32,13 +88,33 @@ export default function Receive() {
     setScript("");
     setRam("");
     setGpu(false);
+    setSuggestion(null);
     setSubmitted(true);
     setTimeout(() => setSubmitted(false), 3000);
   };
 
+  const handleFileUpload = (e) => {
+    const file = e.target.files[0];
+
+
+      setFileName(file.name);
+
+      const reader = new FileReader();
+
+      reader.onload = (event) => {
+      const code = event.target.result;
+
+      const extracted = extractFeatures(code);
+      setFeatures(extracted);
+
+        console.log("FEATURES:", extracted);
+      };
+
+      reader.readAsText(file);
+    };
+
   return (
     <div style={styles.container}>
-      {/* Submit form */}
       <div style={styles.card}>
         <h2 style={styles.cardTitle}>Submit a Job</h2>
         <p style={styles.cardDesc}>Enter your script name and resource needs. It'll be picked up by an available node.</p>
@@ -46,15 +122,27 @@ export default function Receive() {
         <div style={styles.field}>
           <label style={styles.label}>Script / Task</label>
           <input
-            style={styles.input}
-            placeholder="e.g. train.py"
-            value={script}
-            onChange={(e) => setScript(e.target.value)}
-          />
+  type="file"
+  accept=".py"
+  onChange={handleFileUpload}
+  style={styles.input}
+/>
+
+{features && (
+  <pre style={{ fontSize: 10, color: "#38bdf8" }}>
+    {JSON.stringify(features, null, 2)}
+  </pre>
+)}
+
+{fileName && (
+  <div style={{ fontSize: 12, color: "#94a3b8" }}>
+    Selected: {fileName}
+  </div>
+)}
         </div>
 
         <div style={styles.field}>
-          <label style={styles.label}>RAM needed (GB) — optional</label>
+          <label style={styles.label}>RAM needed (GB)</label>
           <input
             style={styles.input}
             placeholder="e.g. 8"
@@ -62,6 +150,12 @@ export default function Receive() {
             onChange={(e) => setRam(e.target.value)}
             type="number"
           />
+          {suggestion && (
+            <div style={styles.suggestion}>
+              <span>💡</span>
+              <span>suggested <strong style={{ color: "#38bdf8" }}>{suggestion.suggested_ram}GB</strong> — {suggestion.reason}</span>
+            </div>
+          )}
         </div>
 
         <div style={styles.checkRow}>
@@ -82,7 +176,6 @@ export default function Receive() {
         {submitted && <p style={styles.successMsg}>✓ Job added to queue</p>}
       </div>
 
-      {/* Job history */}
       <div style={styles.card}>
         <h2 style={styles.cardTitle}>Your Jobs</h2>
         {jobs.length === 0 && <p style={styles.cardDesc}>No jobs yet.</p>}
@@ -95,7 +188,7 @@ export default function Receive() {
               </div>
               <div style={styles.jobRight}>
                 <span style={styles.jobTime}>{job.submitted}</span>
-                <span style={{ ...styles.jobStatus, color: STATUS_COLOR[job.status] || "#94a3b8" }}>
+                <span style={{ ...styles.jobStatus || "#94a3b8" }}>
                   {job.status}
                 </span>
               </div>
@@ -137,6 +230,17 @@ const styles = {
     fontSize: 19,
     fontFamily: "inherit",
     outline: "none",
+  },
+  suggestion: {
+    display: "flex",
+    alignItems: "center",
+    gap: 6,
+    fontSize: 11,
+    color: "#475569",
+    padding: "6px 10px",
+    background: "#38bdf811",
+    border: "1px solid #38bdf822",
+    borderRadius: 6,
   },
   checkRow: { display: "flex", alignItems: "center", gap: 8 },
   checkLabel: { fontSize: 14, color: "#94a3b8", cursor: "pointer" },

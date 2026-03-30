@@ -1,8 +1,8 @@
 import { useState } from "react";
 import JobsProgress from "./JobsProgress";
-import ResourceMonitor from "./ResourceMonitor";
 import Share from "./Share";
 import Receive from "./Receive";
+import TextPressure from "./TextPressure";
 
 const NAV = ["OVERVIEW", "SHARE", "RECEIVE"];
 
@@ -47,8 +47,21 @@ export default function Dashboard({ wsUrl }) {
       <main style={styles.main}>
         {tab === "OVERVIEW" && (
           <div style={styles.overviewGrid}>
+            <div style={{ position: "relative", height: "300px", width: "100%" }}>
+              <TextPressure
+                text="CloudLess"
+                flex
+                alpha={false}
+                stroke={false}
+                width
+                weight
+                italic
+                textColor="#ffffff"
+                strokeColor="#5227FF"
+                minFontSize={36}
+              />
+            </div>
             <JobsProgress />
-            <ResourceMonitor />
           </div>
         )}
         {tab === "SHARE"   && <Share />}
@@ -70,11 +83,11 @@ const styles = {
   topbar: {
     display: "flex",
     alignItems: "center",
-    padding: "0 24px",
+    padding: "50px 14px",
     height: 56,
     borderBottom: "1px solid rgba(255,255,255,0.06)",
     background: "#080d17",
-    gap: 32,
+    gap: 25,
     flexShrink: 0,
   },
   brand: { display: "flex", alignItems: "center", gap: 10 },
@@ -110,7 +123,7 @@ const styles = {
   overviewGrid: {
     display: "flex",
     flexDirection: "column",
-    gap: 12,
+    gap: 65,
     width: "100%",
   },
 };
