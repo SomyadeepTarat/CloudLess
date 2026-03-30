@@ -1,89 +1,98 @@
 import subprocess
-import time
 import tempfile
+import time
 import os
+from utils import log_error
+
+# Default timeout in seconds
+DEFAULT_TIMEOUT = 15
+EXECUTION_MODE = os.getenv("EXECUTION_MODE", "auto").lower()
 
 
-def run_docker(container, command):
-    return subprocess.run(
-        ["docker", "run", "--rm", container] + command,
+def run_subprocess(cmd, timeout):
+    result = subprocess.run(
+        cmd,
         capture_output=True,
         text=True,
-        timeout=15
+        timeout=timeout
     )
+    return result.stdout + result.stderr
 
 
-def execute_code(code, language="python"):
+def run_locally(temp_file_path, language, timeout):
+    if language == "python":
+        return run_subprocess(["python3", temp_file_path], timeout)
+    if language in ("javascript", "node"):
+        return run_subprocess(["node", temp_file_path], timeout)
+    return f"Unsupported language: {language}"
+
+def execute_code(code, language="python", timeout=DEFAULT_TIMEOUT):
+    """
+    Executes code in an isolated Docker container.
+    
+    Returns:
+        output (str): stdout + stderr combined
+        exec_time (float): time taken in seconds
+    """
     start_time = time.time()
 
+    # Create temporary file for code
+    suffix = ".py" if language == "python" else ".js"
     try:
-        if language == "python":
-            result = run_python(code)
+        with tempfile.NamedTemporaryFile(mode="w", suffix=suffix, delete=False) as temp_file:
+            temp_file.write(code)
+            temp_file_path = temp_file.name
+    except Exception as e:
+        log_error(f"Failed to write temp code file: {e}")
+        return str(e), 0
 
-        elif language == "javascript":
-            result = run_node(code)
+    # Determine Docker image and command
+    if language == "python":
+        docker_image = "python:3.9-slim"
+        docker_cmd = [
+            "docker", "run", "--rm",
+            "-v", f"{temp_file_path}:/code/jobfile",
+            docker_image,
+            "python", "/code/jobfile"
+        ]
+    elif language == "javascript" or language == "node":
+        docker_image = "node:18-slim"
+        docker_cmd = [
+            "docker", "run", "--rm",
+            "-v", f"{temp_file_path}:/code/jobfile",
+            docker_image,
+            "node", "/code/jobfile"
+        ]
+    else:
+        os.unlink(temp_file_path)
+        return f"Unsupported language: {language}", 0
 
+    # Execute Docker container
+    try:
+        if EXECUTION_MODE == "local":
+            output = run_locally(temp_file_path, language, timeout)
+        elif EXECUTION_MODE == "docker":
+            output = run_subprocess(docker_cmd, timeout)
         else:
-            return "Unsupported language", "error", 0
-
-        output = result.stdout if result.stdout else result.stderr
-        status = "success" if result.returncode == 0 else "error"
-
+            try:
+                output = run_subprocess(docker_cmd, timeout)
+            except FileNotFoundError:
+                output = run_locally(temp_file_path, language, timeout)
+            except Exception as exc:
+                if "No such file or directory: 'docker'" in str(exc):
+                    output = run_locally(temp_file_path, language, timeout)
+                else:
+                    raise
     except subprocess.TimeoutExpired:
         output = "Execution timed out"
-        status = "error"
-
     except Exception as e:
-        output = str(e)
-        status = "error"
-
-    exec_time = round(time.time() - start_time, 3)
-    return output, status, exec_time
-
-
-# 🔹 Python via Docker
-def run_python(code):
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".py") as f:
-        f.write(code.encode())
-        filename = f.name
-
-    try:
-        result = subprocess.run(
-            [
-                "docker", "run", "--rm",
-                "-v", f"{filename}:/app/code.py",
-                "python:3.9",
-                "python", "/app/code.py"
-            ],
-            capture_output=True,
-            text=True,
-            timeout=15
-        )
+        output = f"Execution failed: {e}"
     finally:
-        os.remove(filename)
+        # Clean up temporary file
+        try:
+            os.unlink(temp_file_path)
+        except:
+            pass
 
-    return result
-
-
-# 🔹 Node.js via Docker
-def run_node(code):
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".js") as f:
-        f.write(code.encode())
-        filename = f.name
-
-    try:
-        result = subprocess.run(
-            [
-                "docker", "run", "--rm",
-                "-v", f"{filename}:/app/code.js",
-                "node:18",
-                "node", "/app/code.js"
-            ],
-            capture_output=True,
-            text=True,
-            timeout=15
-        )
-    finally:
-        os.remove(filename)
-
-    return result
+    exec_time = time.time() - start_time
+    return output, exec_time

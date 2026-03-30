@@ -1,14 +1,19 @@
 {
   "name": "cloudless-server",
   "version": "1.0.0",
+  "description": "Central server for CloudLess distributed system",
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js"
   },
   "dependencies": {
-    "cors": "^2.8.6",
-    "express": "^4.22.1",
-    "uuid": "^9.0.1",
-    "ws": "^8.20.0"
+    "express": "^4.18.2",
+    "cors": "^2.8.5",
+    "body-parser": "^1.20.2",
+    "mongoose": "^7.5.0",
+    "uuid": "^9.0.0"
+  },
+  "engines": {
+    "node": "18.x"
   }
 }

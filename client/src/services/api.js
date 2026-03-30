@@ -1,5 +1,38 @@
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5001';
-const WS_URL = process.env.REACT_APP_WS_URL || 'ws://localhost:5001';
+const runtimeConfig = typeof window !== 'undefined' ? window.__CLOUDLESS_CONFIG__ || {} : {};
+
+const isLocalHostname = (hostname) =>
+    hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '0.0.0.0';
+
+const deriveApiBaseUrl = () => {
+    if (runtimeConfig.apiUrl) return runtimeConfig.apiUrl;
+    if (process.env.REACT_APP_API_URL) return process.env.REACT_APP_API_URL;
+
+    if (typeof window !== 'undefined') {
+        const { protocol, hostname } = window.location;
+        if (isLocalHostname(hostname)) {
+            return 'http://localhost:5001';
+        }
+        return `${protocol}//${window.location.host}`;
+    }
+
+    return 'http://localhost:5001';
+};
+
+const deriveWsUrl = (apiBaseUrl) => {
+    if (runtimeConfig.wsUrl) return runtimeConfig.wsUrl;
+    if (process.env.REACT_APP_WS_URL) return process.env.REACT_APP_WS_URL;
+
+    if (apiBaseUrl.startsWith('https://')) {
+        return apiBaseUrl.replace('https://', 'wss://');
+    }
+    if (apiBaseUrl.startsWith('http://')) {
+        return apiBaseUrl.replace('http://', 'ws://');
+    }
+    return 'ws://localhost:5001';
+};
+
+const API_BASE_URL = deriveApiBaseUrl();
+const WS_URL = deriveWsUrl(API_BASE_URL);
 
 export const API_ENDPOINTS = {
     JOBS: `${API_BASE_URL}/jobs`,

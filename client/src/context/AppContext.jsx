@@ -58,6 +58,8 @@ export function AppProvider({ children }) {
                 ...prev,
                 pending: [job, ...(prev.pending || [])],
             }));
+            const nodesData = await api.getNodes();
+            setNodes(nodesData);
             setError(null);
             return job;
         } catch (err) {
