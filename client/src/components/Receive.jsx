@@ -94,24 +94,48 @@ export default function Receive() {
   };
 
   const handleFileUpload = (e) => {
-    const file = e.target.files[0];
+  const file = e.target.files[0];
+  if (!file) return;
 
+  setFileName(file.name);
 
-      setFileName(file.name);
+  const reader = new FileReader();
 
-      const reader = new FileReader();
+  reader.onload = async (event) => {
+    const code = event.target.result;
 
-      reader.onload = (event) => {
-      const code = event.target.result;
+    // ✅ extract features
+    const extracted = extractFeatures(code);
+    setFeatures(extracted);
 
-      const extracted = extractFeatures(code);
-      setFeatures(extracted);
+    console.log("SENDING:", extracted);
 
-        console.log("FEATURES:", extracted);
-      };
+    try {
+      // ✅ send to backend
+      const res = await fetch("http://127.0.0.1:5000/predict", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(extracted),
+      });
 
-      reader.readAsText(file);
-    };
+      const data = await res.json();
+
+      console.log("RESPONSE:", data);
+
+      // ✅ update RAM field
+      if (data.predicted_ram) {
+        setRam(String(Math.round(data.predicted_ram)));
+      }
+
+    } catch (err) {
+      console.error("ERROR:", err);
+    }
+  };
+
+  reader.readAsText(file);
+};
 
   return (
     <div style={styles.container}>

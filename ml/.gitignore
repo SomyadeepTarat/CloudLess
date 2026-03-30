@@ -1,0 +1,28 @@
+# Python artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Virtual Environments
+venv/
+.venv/
+env/
+ENV/
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# ML specific
+*.pkl
+*.joblib
+*.pb
+*.h5
+*.onnx
+*.weights
+dataset.csv
+/models/tmp/
+code_samples/

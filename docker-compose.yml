@@ -1,0 +1,56 @@
+version: '3.8'
+
+services:
+  server:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    ports:
+      - "5001:5001"
+    environment:
+      - PORT=5001
+      - NODE_ENV=development
+    volumes:
+      - ./server:/app
+      - /app/node_modules
+    command: npm start
+    networks:
+      - cloudless
+
+  client:
+    build:
+      context: ./client
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - REACT_APP_API_URL=http://localhost:5001
+      - REACT_APP_WS_URL=ws://localhost:5001
+    volumes:
+      - ./client/src:/app/src
+    depends_on:
+      - server
+    networks:
+      - cloudless
+    stdin_open: true
+    tty: true
+
+  worker:
+    build:
+      context: ./worker
+      dockerfile: Dockerfile
+    environment:
+      - SERVER_URL=http://server:5001
+      - WORKER_POLL_INTERVAL=2
+      - MAX_WORKERS=2
+    volumes:
+      - ./worker:/app
+    depends_on:
+      - server
+    networks:
+      - cloudless
+    command: python worker.py
+
+networks:
+  cloudless:
+    driver: bridge

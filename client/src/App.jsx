@@ -1,16 +1,33 @@
 import './App.css';
-import { useState } from 'react';
+import { useContext, useEffect } from 'react';
 import Auth from './components/Auth';
 import Dashboard from './components/Dashboard';
+import AppContext, { AppProvider } from './context/AppContext';
+import * as api from './services/api';
 
-function App() {
-  const [user, setUser] = useState(null);
+function AppContent() {
+  const { user, login } = useContext(AppContext);
+
+  useEffect(() => {
+    // Check server health on startup
+    api.healthCheck().catch(err => {
+      console.error('Server is not available:', err);
+    });
+  }, []);
 
   if (!user) {
-    return <Auth onLogin={(u) => setUser(u)} />;
+    return <Auth onLogin={login} />;
   }
 
-  return <Dashboard wsUrl="ws://localhost:4000/logs" user={user} />;
+  return <Dashboard user={user} />;
+}
+
+function App() {
+  return (
+    <AppProvider>
+      <AppContent />
+    </AppProvider>
+  );
 }
 
 export default App;
