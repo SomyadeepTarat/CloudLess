@@ -4,6 +4,6 @@ const controller = require('../controllers/nodecontroller');
 
 router.post('/register', controller.registerNode);
 router.post('/heartbeat', controller.heartbeat);
-router.get('/nodes/all', controller.getNodes);
+router.get('/all', controller.getNodes);
 
 module.exports = router;

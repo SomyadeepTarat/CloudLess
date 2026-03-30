@@ -1,11 +1,13 @@
 import requests
 import time
 import uuid
+import os
 from concurrent.futures import ThreadPoolExecutor
 from executor import execute_code
 from utils import log_info, log_error, get_system_stats
 
-SERVER_URL = "http://localhost:5000"
+# Read from environment or use default
+SERVER_URL = os.getenv("SERVER_URL", "http://localhost:5001")
 WORKER_ID = str(uuid.uuid4())
 POLL_INTERVAL = 2
 MAX_WORKERS = 2  # parallel jobs
@@ -22,8 +24,8 @@ def register():
             "ram": stats["ram"],
             "status": "idle"
         }
-        requests.post(f"{SERVER_URL}/register", json=data)
-        log_info(f"Registered worker {WORKER_ID}")
+        requests.post(f"{SERVER_URL}/nodes/register", json=data)
+        log_info(f"Registered worker {WORKER_ID} to {SERVER_URL}")
     except Exception as e:
         log_error(f"Registration failed: {e}")
 
@@ -31,7 +33,7 @@ def register():
 def heartbeat():
     try:
         stats = get_system_stats()
-        requests.post(f"{SERVER_URL}/heartbeat", json={
+        requests.post(f"{SERVER_URL}/nodes/heartbeat", json={
             "worker_id": WORKER_ID,
             "cpu_usage": stats["cpu_usage"],
             "ram_usage": stats["ram_usage"]
@@ -42,7 +44,7 @@ def heartbeat():
 
 def get_job():
     try:
-        res = requests.get(f"{SERVER_URL}/job", params={"worker_id": WORKER_ID})
+        res = requests.get(f"{SERVER_URL}/jobs/job", params={"worker_id": WORKER_ID})
         if res.status_code == 200 and res.json():
             return res.json()
     except Exception as e:
@@ -59,7 +61,7 @@ def send_result(job_id, output, status, exec_time):
             "status": status,
             "time_taken": exec_time
         }
-        requests.post(f"{SERVER_URL}/result", json=data)
+        requests.post(f"{SERVER_URL}/jobs/result", json=data)
         log_info(f"Result sent for job {job_id}")
     except Exception as e:
         log_error(f"Error sending result: {e}")
