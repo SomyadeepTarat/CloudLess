@@ -1,12 +1,13 @@
 const store = require('../data/store');
 
-function registerNode(workerId, cpu = 0, ram = 0, status = 'idle') {
+function registerNode(workerId, cpu = 0, ram = 0, status = 'idle', capabilities = {}) {
     if (!workerId) return null;
 
     store.nodes[workerId] = {
         cpu,
         ram,
         status,
+        capabilities,
         lastSeen: Date.now(),
         cpu_usage: 0,
         ram_usage: 0

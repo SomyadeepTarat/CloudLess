@@ -1,116 +1,138 @@
-import { useState } from "react";
-import JobsProgress from "./JobsProgress";
-import ResourceMonitor from "./ResourceMonitor";
+import { useContext, useEffect, useMemo, useState } from "react";
 import Share from "./Share";
 import Receive from "./Receive";
+import AppContext from "../context/AppContext";
 
 const NAV = ["OVERVIEW", "SHARE", "RECEIVE"];
 
-export default function Dashboard({ wsUrl }) {
+const formatAge = (timestamp) => {
+  if (!timestamp) return "just now";
+  const seconds = Math.max(0, Math.floor((Date.now() - timestamp) / 1000));
+  if (seconds < 60) return `${seconds}s ago`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return `${Math.floor(hours / 24)}d ago`;
+};
+
+export default function Dashboard({ user }) {
   const [tab, setTab] = useState("OVERVIEW");
+  const { jobs, nodes, loading, error, refreshDashboard, logout } = useContext(AppContext);
+
+  useEffect(() => {
+    refreshDashboard();
+
+    const intervalId = window.setInterval(() => {
+      refreshDashboard();
+    }, 15000);
+
+    return () => window.clearInterval(intervalId);
+  }, [refreshDashboard]);
+
+  const recentJobs = useMemo(() => {
+    const pending = Array.isArray(jobs.pending) ? jobs.pending : [];
+    const active = Object.entries(jobs.active || {}).map(([jobId, job]) => ({
+      jobId,
+      code: `Assigned to ${job.nodeId || "worker"}`,
+      status: "processing",
+      created_at: job.startTime,
+      metadata: {},
+    }));
+    const completed = Object.entries(jobs.completed || {}).map(([jobId, result]) => ({
+      jobId,
+      code: result.output || "Completed job",
+      status: result.status || "completed",
+      created_at: result.completed_at,
+      metadata: {},
+    }));
+
+    return [...pending, ...active, ...completed]
+      .sort((a, b) => (b.created_at || 0) - (a.created_at || 0))
+      .slice(0, 6);
+  }, [jobs]);
+
+  const nodeList = useMemo(() => Object.entries(nodes || {}), [nodes]);
 
   return (
-    <div style={styles.root}>
-      <header style={styles.topbar}>
-        <div style={styles.brand}>
-          <svg width={22} height={22} viewBox="0 0 22 22" fill="none">
-            <polygon points="11,2 20,7 20,15 11,20 2,15 2,7" stroke="#38bdf8" strokeWidth={1.5} fill="none" />
-            <polygon points="11,6 16,9 16,13 11,16 6,13 6,9" fill="#38bdf8" opacity={0.2} />
-            <circle cx={11} cy={11} r={2.5} fill="#38bdf8" />
-          </svg>
-          <span style={styles.brandName}>CLOUDLESS</span>
-          <span style={styles.brandTag}>distributed compute</span>
+    <div className="dashboard-root">
+      <header className="topbar">
+        <div className="brand" onClick={() => setTab("OVERVIEW")}>
+          <div className="logo-container">
+            <svg width="40" height="40" viewBox="0 0 50 50" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M35 32C38.3137 32 41 29.3137 41 26C41 22.6863 38.3137 20 35 20C34.7732 20 34.5496 20.0126 34.33 20.0372C33.0955 16.511 29.8375 14 26 14C21.8579 14 18.5 17.3579 18.5 21.5C18.5 21.5968 18.5019 18.6931 18.5058 18.7889C15.125 19.175 12.5 22.2801 12.5 26C12.5 30.1421 15.8579 33.5 20 33.5H35" stroke="#D8B4FE" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          </div>
+          <span className="brand-name">CloudLess</span>
         </div>
 
-        <nav style={styles.nav}>
+        <nav className="nav">
           {NAV.map((n) => (
             <button
               key={n}
               onClick={() => setTab(n)}
-              style={{
-                ...styles.navBtn,
-                color: tab === n ? "#e2e8f0" : "#475569",
-                borderBottom: tab === n ? "2px solid #38bdf8" : "2px solid transparent",
-              }}
+              className={`nav-btn ${tab === n ? "active" : ""}`}
             >
               {n}
             </button>
           ))}
         </nav>
 
-        <div style={styles.topRight}>
-          <span style={styles.sessionDot} />
-          <span style={styles.sessionLabel}>SESSION ACTIVE</span>
+        <div className="topbar-actions">
+          <span className="user-chip">{user?.username}</span>
+          <button className="nav-btn" onClick={logout}>LOGOUT</button>
         </div>
       </header>
 
-      <main style={styles.main}>
+      <main className="main-content">
         {tab === "OVERVIEW" && (
-          <div style={styles.overviewGrid}>
-            <JobsProgress />
-            <ResourceMonitor />
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%' }}>
+            <div className="hero-logo">CloudLess</div>
+            <div className="overview-stats">
+              <div className="stat-card">
+                <span className="stat-label">Shared Nodes</span>
+                <strong className="stat-value">{nodeList.length}</strong>
+              </div>
+              <div className="stat-card">
+                <span className="stat-label">Pending Jobs</span>
+                <strong className="stat-value">{jobs.pending?.length || 0}</strong>
+              </div>
+              <div className="stat-card">
+                <span className="stat-label">Completed Jobs</span>
+                <strong className="stat-value">{Object.keys(jobs.completed || {}).length}</strong>
+              </div>
+            </div>
+            {(loading || error) && (
+              <div className={`status-banner ${error ? "error" : ""}`}>
+                {error || "Refreshing cluster data..."}
+              </div>
+            )}
+            <div style={{ width: '100%', maxWidth: '1000px' }}>
+                <h3 className="section-title">Recent Activity</h3>
+                <div className="history-list">
+                    {recentJobs.length === 0 && (
+                      <div className="empty-state">No jobs yet. Submit one in the receive tab or share a machine to get started.</div>
+                    )}
+                    {recentJobs.map((job) => (
+                         <div key={job.jobId || job.code} className="node-item">
+                            <div className={`badge ${job.metadata?.gpu ? "badge-purple" : ""}`}>
+                              {job.metadata?.gpu ? "GPU" : "CPU"}
+                            </div>
+                            <div className="node-info">
+                                <span className="node-name">{job.code}</span>
+                                <span className="node-meta">
+                                  {(job.status || "pending").toUpperCase()} • {formatAge(job.created_at)}
+                                </span>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            </div>
           </div>
         )}
-        {tab === "SHARE"   && <Share />}
-        {tab === "RECEIVE" && <Receive />}
+        {tab === "SHARE"   && <Share user={user} />}
+        {tab === "RECEIVE" && <Receive user={user} />}
       </main>
     </div>
   );
 }
-
-const styles = {
-  root: {
-    minHeight: "100vh",
-    background: "#060b14",
-    color: "#e2e8f0",
-    fontFamily: "'JetBrains Mono', 'Fira Code', 'Courier New', monospace",
-    display: "flex",
-    flexDirection: "column",
-  },
-  topbar: {
-    display: "flex",
-    alignItems: "center",
-    padding: "0 24px",
-    height: 56,
-    borderBottom: "1px solid rgba(255,255,255,0.06)",
-    background: "#080d17",
-    gap: 32,
-    flexShrink: 0,
-  },
-  brand: { display: "flex", alignItems: "center", gap: 10 },
-  brandName: { fontSize: 14, fontWeight: 800, letterSpacing: "0.15em", color: "#f1f5f9" },
-  brandTag: { fontSize: 9, color: "#334155", letterSpacing: "0.1em", textTransform: "uppercase" },
-  nav: { display: "flex", gap: 2, flex: 1 },
-  navBtn: {
-    background: "transparent",
-    border: "none",
-    borderBottom: "2px solid transparent",
-    padding: "18px 14px 16px",
-    fontSize: 10,
-    fontFamily: "inherit",
-    fontWeight: 700,
-    letterSpacing: "0.1em",
-    cursor: "pointer",
-    transition: "color 0.15s, border-color 0.15s",
-  },
-  topRight: { display: "flex", alignItems: "center", gap: 8, marginLeft: "auto" },
-  sessionDot: {
-    width: 7, height: 7, borderRadius: "50%",
-    background: "#4ade80", boxShadow: "0 0 6px #4ade80",
-  },
-  sessionLabel: { fontSize: 9, color: "#4ade80", fontWeight: 700, letterSpacing: "0.1em" },
-  main: {
-    flex: 1,
-    padding: 24,
-    overflowY: "auto",
-    display: "flex",
-    flexDirection: "column",
-    alignItems: "flex-start",
-  },
-  overviewGrid: {
-    display: "flex",
-    flexDirection: "column",
-    gap: 12,
-    width: "100%",
-  },
-};

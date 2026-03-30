@@ -1,7 +1,7 @@
 const jobService = require('../services/jobservice');
 
 exports.submitJob = (req, res) => {
-    const { job_id, code, language, priority } = req.body;
+    const { job_id, code, language, priority, metadata } = req.body;
 
     if (!code) {
         return res.status(400).json({ error: 'code is required' });
@@ -11,7 +11,8 @@ exports.submitJob = (req, res) => {
         job_id,
         code,
         language: language || 'python',
-        priority: typeof priority === 'number' ? priority : 0
+        priority: typeof priority === 'number' ? priority : 0,
+        metadata: metadata || {}
     });
 
     res.status(201).json({ message: 'Job submitted', job });

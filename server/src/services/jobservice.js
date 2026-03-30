@@ -2,7 +2,7 @@ const store = require('../data/store');
 const scheduler = require('./schedulerservice');
 const { v4: uuidv4 } = require('uuid');
 
-function submitJob({ job_id, code, language, priority = 0 }) {
+function submitJob({ job_id, code, language, priority = 0, metadata = {} }) {
     const id = job_id || uuidv4();
     const job = {
         jobId: id,
@@ -10,6 +10,7 @@ function submitJob({ job_id, code, language, priority = 0 }) {
         code,
         language,
         priority,
+        metadata,
         status: 'pending',
         created_at: Date.now()
     };

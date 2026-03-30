@@ -1,102 +1,141 @@
-import { useState } from "react";
+import { useContext, useMemo, useState } from "react";
+import AppContext from "../context/AppContext";
 
-const SAMPLE_JOBS = [
-  { id: "8821", name: "train.py", status: "running", submitted: "11:04" },
-  { id: "8820", name: "inference.py", status: "complete", submitted: "10:41" },
-  { id: "8819", name: "preprocess.py", status: "failed", submitted: "11:09" },
-];
-
-const STATUS_COLOR = {
-  running: "#4ade80",
-  complete: "#38bdf8",
-  failed: "#f87171",
-  queued: "#facc15",
-};
-
-export default function Receive() {
+export default function Receive({ user }) {
   const [script, setScript] = useState("");
-  const [ram, setRam] = useState("");
   const [gpu, setGpu] = useState(false);
-  const [jobs, setJobs] = useState(SAMPLE_JOBS);
-  const [submitted, setSubmitted] = useState(false);
+  const [gpuSize, setGpuSize] = useState("");
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+  const { jobs, loading, submitNewJob } = useContext(AppContext);
 
-  const handleSubmit = () => {
-    if (!script.trim()) return;
-    const newJob = {
-      id: String(Math.floor(Math.random() * 9000) + 1000),
-      name: script,
-      status: "queued",
-      submitted: new Date().toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit" }),
-    };
-    setJobs((prev) => [newJob, ...prev]);
-    setScript("");
-    setRam("");
-    setGpu(false);
-    setSubmitted(true);
-    setTimeout(() => setSubmitted(false), 3000);
+  const jobHistory = useMemo(() => {
+    const pending = Array.isArray(jobs.pending) ? jobs.pending : [];
+    const completed = Object.entries(jobs.completed || {}).map(([jobId, result]) => ({
+      jobId,
+      code: result.output || "Completed job",
+      metadata: {},
+      status: result.status || "completed",
+    }));
+
+    return [...pending, ...completed].slice(0, 8);
+  }, [jobs]);
+
+  const handleSubmit = async () => {
+    if (!script.trim()) {
+      setError("Script/Task is required");
+      setSuccess("");
+      return;
+    }
+    if (gpu && (parseFloat(gpuSize) <= 0 || !gpuSize)) {
+      setError("GPU Size must be greater than 0GB");
+      setSuccess("");
+      return;
+    }
+    setError("");
+
+    try {
+      const job = await submitNewJob({
+        code: script.trim(),
+        language: gpu ? "gpu" : "cpu",
+        priority: gpu ? 1 : 0,
+        metadata: {
+          gpu,
+          gpuSize: gpu ? parseFloat(gpuSize) : 0,
+          requestedBy: user?.username || "anonymous",
+        },
+      });
+
+      setSuccess(`Queued ${job.code}`);
+      setScript("");
+      setGpu(false);
+      setGpuSize("");
+    } catch (err) {
+      setError(err.message || "Unable to submit job");
+      setSuccess("");
+    }
   };
 
   return (
-    <div style={styles.container}>
-      {/* Submit form */}
-      <div style={styles.card}>
-        <h2 style={styles.cardTitle}>Submit a Job</h2>
-        <p style={styles.cardDesc}>Enter your script name and resource needs. It'll be picked up by an available node.</p>
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%', gap: '4rem' }}>
+      <div className="card" style={{ maxWidth: '600px' }}>
+        <h2 className="card-title">Submit a Job</h2>
+        <p className="card-desc">
+          Enter your script name and resource needs. It will be picked up by an available node.
+        </p>
 
-        <div style={styles.field}>
-          <label style={styles.label}>Script / Task</label>
+        <div className="form-group" style={{ alignItems: 'center' }}>
+          <label className="form-label">Script / Task</label>
           <input
-            style={styles.input}
-            placeholder="e.g. train.py"
+            style={{ width: '100%', maxWidth: '500px', textAlign: 'center' }}
+            placeholder="eg: Train.py"
             value={script}
-            onChange={(e) => setScript(e.target.value)}
+            onChange={(e) => {
+              setScript(e.target.value);
+              if (e.target.value.trim()) setError("");
+            }}
           />
         </div>
 
-        <div style={styles.field}>
-          <label style={styles.label}>RAM needed (GB) — optional</label>
-          <input
-            style={styles.input}
-            placeholder="e.g. 8"
-            value={ram}
-            onChange={(e) => setRam(e.target.value)}
-            type="number"
-          />
-        </div>
-
-        <div style={styles.checkRow}>
+        <div className="checkbox-group" style={{ justifyContent: 'center' }}>
           <input
             id="gpu"
             type="checkbox"
             checked={gpu}
-            onChange={(e) => setGpu(e.target.checked)}
-            style={{ accentColor: "#38bdf8", width: 14, height: 14 }}
+            onChange={(e) => {
+              setGpu(e.target.checked);
+              if (!e.target.checked) {
+                setGpuSize("");
+                setError("");
+              }
+            }}
           />
-          <label htmlFor="gpu" style={styles.checkLabel}>Requires GPU</label>
+          <label htmlFor="gpu" className="checkbox-label">Requires GPU</label>
         </div>
 
-        <button style={styles.btn} onClick={handleSubmit}>
-          Submit Job
-        </button>
+        {gpu && (
+          <div className="form-group" style={{ alignItems: 'center' }}>
+            <label className="form-label">GPU Size (GB)</label>
+            <input
+              style={{ width: '100%', maxWidth: '500px', textAlign: 'center' }}
+              placeholder="eg: 8"
+              value={gpuSize}
+              onChange={(e) => {
+                setGpuSize(e.target.value);
+                if (parseFloat(e.target.value) > 0) setError("");
+              }}
+              type="number"
+            />
+          </div>
+        )}
 
-        {submitted && <p style={styles.successMsg}>✓ Job added to queue</p>}
+        {error && <span style={{ color: '#f87171', fontSize: '0.75rem', textAlign: 'center' }}>{error}</span>}
+        {success && <span style={{ color: '#d8b4fe', fontSize: '0.75rem', textAlign: 'center' }}>{success}</span>}
+
+        <button className="btn-primary" style={{ background: '#36303c', color: '#b291d9' }} onClick={handleSubmit} disabled={loading}>
+          {loading ? "Submitting..." : "Submit Job"}
+        </button>
       </div>
 
-      {/* Job history */}
-      <div style={styles.card}>
-        <h2 style={styles.cardTitle}>Your Jobs</h2>
-        {jobs.length === 0 && <p style={styles.cardDesc}>No jobs yet.</p>}
-        <div style={styles.jobList}>
-          {jobs.map((job) => (
-            <div key={job.id} style={styles.jobRow}>
-              <div>
-                <span style={styles.jobName}>{job.name}</span>
-                <span style={styles.jobId}> #{job.id}</span>
+      <div style={{ width: '100%', maxWidth: '1000px' }}>
+        <h3 className="section-title">Job History</h3>
+        <div className="history-list">
+          {jobHistory.length === 0 && (
+            <div className="empty-state">Your submitted jobs will appear here once they are queued.</div>
+          )}
+          {jobHistory.map((job) => (
+            <div key={job.jobId || job.code} className="node-item">
+              <div className={`badge ${job.metadata?.gpu ? "badge-purple" : ""}`}>
+                {job.metadata?.gpu ? "GPU" : "CPU"}
               </div>
-              <div style={styles.jobRight}>
-                <span style={styles.jobTime}>{job.submitted}</span>
-                <span style={{ ...styles.jobStatus, color: STATUS_COLOR[job.status] || "#94a3b8" }}>
-                  {job.status}
+              <div className="node-info">
+                <span className="node-name">{job.code}</span>
+                <span className="node-meta">
+                  {job.metadata?.gpu
+                    ? `${job.metadata.gpuSize || 0}GB GPU`
+                    : "Standard CPU job"}
+                  {" • "}
+                  {job.metadata?.requestedBy || user?.username || "Unknown user"}
                 </span>
               </div>
             </div>
@@ -106,65 +145,3 @@ export default function Receive() {
     </div>
   );
 }
-
-const styles = {
-  container: {
-    display: "flex",
-    flexDirection: "column",
-    gap: 16,
-    maxWidth: 6000,
-    width: "100%",
-  },
-  card: {
-    background: "#0a0f1a",
-    border: "1px solid rgba(255,255,255,0.07)",
-    borderRadius: 10,
-    padding: 20,
-    display: "flex",
-    flexDirection: "column",
-    gap: 14,
-  },
-  cardTitle: { margin: 0, fontSize: 19, fontWeight: 700, color: "#e2e8f0", letterSpacing: "0.05em" },
-  cardDesc: { margin: 0, fontSize: 14, color: "#475569", lineHeight: 1.6 },
-  field: { display: "flex", flexDirection: "column", gap: 6 },
-  label: { fontSize: 14, color: "#94a3b8", letterSpacing: "0.08em", fontWeight: 600 },
-  input: {
-    background: "#060b14",
-    border: "1px solid rgba(255,255,255,0.1)",
-    borderRadius: 6,
-    padding: "8px 12px",
-    color: "#e2e8f0",
-    fontSize: 19,
-    fontFamily: "inherit",
-    outline: "none",
-  },
-  checkRow: { display: "flex", alignItems: "center", gap: 8 },
-  checkLabel: { fontSize: 14, color: "#94a3b8", cursor: "pointer" },
-  btn: {
-    background: "#38bdf8",
-    color: "#060b14",
-    border: "none",
-    borderRadius: 6,
-    padding: "9px 18px",
-    fontSize: 11,
-    fontWeight: 800,
-    fontFamily: "inherit",
-    letterSpacing: "0.08em",
-    cursor: "pointer",
-    alignSelf: "flex-start",
-  },
-  successMsg: { margin: 0, fontSize: 14, color: "#4ade80" },
-  jobList: { display: "flex", flexDirection: "column", gap: 1 },
-  jobRow: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    padding: "10px 0",
-    borderBottom: "1px solid rgba(255,255,255,0.04)",
-  },
-  jobName: { fontSize: 19, color: "#e2e8f0", fontWeight: 600 },
-  jobId: { fontSize: 10, color: "#475569" },
-  jobRight: { display: "flex", alignItems: "center", gap: 12 },
-  jobTime: { fontSize: 10, color: "#334155" },
-  jobStatus: { fontSize: 10, fontWeight: 700, letterSpacing: "0.08em" },
-};

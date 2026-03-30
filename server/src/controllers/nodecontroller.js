@@ -1,13 +1,13 @@
 const nodeService = require('../services/nodeservice');
 
 exports.registerNode = (req, res) => {
-    const { worker_id, cpu, ram, status } = req.body;
+    const { worker_id, cpu, ram, status, capabilities } = req.body;
 
     if (!worker_id) {
         return res.status(400).json({ error: 'worker_id is required' });
     }
 
-    const registeredId = nodeService.registerNode(worker_id, cpu, ram, status || 'idle');
+    const registeredId = nodeService.registerNode(worker_id, cpu, ram, status || 'idle', capabilities || {});
     res.json({ worker_id: registeredId });
 };
 
