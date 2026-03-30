@@ -1,13 +1,26 @@
-import { useContext, useMemo, useState } from "react";
+import { useContext, useMemo, useRef, useState } from "react";
 import AppContext from "../context/AppContext";
 
+const suggestGpuSize = (file) => {
+  if (!file) return 0;
+
+  const sizeInMb = file.size / (1024 * 1024);
+
+  if (sizeInMb < 0.5) return 4;
+  if (sizeInMb < 2) return 8;
+  if (sizeInMb < 5) return 12;
+  return 16;
+};
+
 export default function Receive({ user }) {
-  const [script, setScript] = useState("");
+  const [selectedFile, setSelectedFile] = useState(null);
   const [gpu, setGpu] = useState(false);
   const [gpuSize, setGpuSize] = useState("");
+  const [suggestedGpuSize, setSuggestedGpuSize] = useState(0);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const { jobs, loading, submitNewJob } = useContext(AppContext);
+  const fileInputRef = useRef(null);
 
   const jobHistory = useMemo(() => {
     const pending = Array.isArray(jobs.pending) ? jobs.pending : [];
@@ -22,34 +35,62 @@ export default function Receive({ user }) {
   }, [jobs]);
 
   const handleSubmit = async () => {
-    if (!script.trim()) {
-      setError("Script/Task is required");
+    if (!selectedFile) {
+      setError("Upload a Python file to submit a job");
       setSuccess("");
       return;
     }
+
+    if (!selectedFile.name.toLowerCase().endsWith(".py")) {
+      setError("Only Python files are allowed");
+      setSuccess("");
+      return;
+    }
+
     if (gpu && (parseFloat(gpuSize) <= 0 || !gpuSize)) {
       setError("GPU Size must be greater than 0GB");
+      setSuccess("");
+      return;
+    }
+    if (gpu && parseFloat(gpuSize) > suggestedGpuSize + 3) {
+      setError(`GPU Size cannot be more than ${suggestedGpuSize + 3}GB for this file`);
       setSuccess("");
       return;
     }
     setError("");
 
     try {
+      const jobCode = await selectedFile.text();
+      const uploadedFileName = selectedFile.name;
+
+      if (!jobCode.trim()) {
+        setError("Uploaded file is empty");
+        setSuccess("");
+        return;
+      }
+
       const job = await submitNewJob({
-        code: script.trim(),
+        code: jobCode,
         language: gpu ? "gpu" : "cpu",
         priority: gpu ? 1 : 0,
         metadata: {
           gpu,
           gpuSize: gpu ? parseFloat(gpuSize) : 0,
+          suggestedGpuSize: gpu ? suggestedGpuSize : 0,
           requestedBy: user?.username || "anonymous",
+          sourceFile: uploadedFileName,
+          taskLabel: uploadedFileName,
         },
       });
 
-      setSuccess(`Queued ${job.code}`);
-      setScript("");
+      setSuccess(`Queued ${uploadedFileName || job.code}`);
+      setSelectedFile(null);
       setGpu(false);
       setGpuSize("");
+      setSuggestedGpuSize(0);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
     } catch (err) {
       setError(err.message || "Unable to submit job");
       setSuccess("");
@@ -65,16 +106,35 @@ export default function Receive({ user }) {
         </p>
 
         <div className="form-group" style={{ alignItems: 'center' }}>
-          <label className="form-label">Script / Task</label>
+          <label className="form-label">Python File</label>
           <input
-            style={{ width: '100%', maxWidth: '500px', textAlign: 'center' }}
-            placeholder="eg: Train.py"
-            value={script}
+            ref={fileInputRef}
+            type="file"
+            accept=".py"
+            style={{ display: 'none' }}
             onChange={(e) => {
-              setScript(e.target.value);
-              if (e.target.value.trim()) setError("");
+              const file = e.target.files?.[0] || null;
+              const suggested = file ? suggestGpuSize(file) : 0;
+              setSelectedFile(file);
+              setSuggestedGpuSize(suggested);
+              setGpuSize(gpu && suggested ? String(suggested) : "");
+              setError("");
+              setSuccess("");
             }}
           />
+          <button
+            type="button"
+            className="btn-primary"
+            style={{ marginTop: '0.5rem' }}
+            onClick={() => fileInputRef.current?.click()}
+          >
+            Add File
+          </button>
+          {selectedFile && (
+            <span style={{ color: '#94a3b8', fontSize: '0.8rem', textAlign: 'center' }}>
+              Selected: {selectedFile.name}
+            </span>
+          )}
         </div>
 
         <div className="checkbox-group" style={{ justifyContent: 'center' }}>
@@ -86,7 +146,12 @@ export default function Receive({ user }) {
               setGpu(e.target.checked);
               if (!e.target.checked) {
                 setGpuSize("");
+                setSuggestedGpuSize(0);
                 setError("");
+              } else if (selectedFile) {
+                const suggested = suggestGpuSize(selectedFile);
+                setSuggestedGpuSize(suggested);
+                setGpuSize(String(suggested));
               }
             }}
           />
@@ -95,17 +160,35 @@ export default function Receive({ user }) {
 
         {gpu && (
           <div className="form-group" style={{ alignItems: 'center' }}>
+            <span style={{ color: '#d8b4fe', fontSize: '0.8rem', textAlign: 'center' }}>
+              Suggested GPU RAM: {suggestedGpuSize}GB
+            </span>
             <label className="form-label">GPU Size (GB)</label>
             <input
               style={{ width: '100%', maxWidth: '500px', textAlign: 'center' }}
-              placeholder="eg: 8"
+              placeholder="Suggested automatically"
               value={gpuSize}
               onChange={(e) => {
-                setGpuSize(e.target.value);
-                if (parseFloat(e.target.value) > 0) setError("");
+                const value = e.target.value;
+                setGpuSize(value);
+
+                if (!value) {
+                  setError("");
+                  return;
+                }
+
+                const numericValue = parseFloat(value);
+                if (numericValue > 0 && numericValue <= suggestedGpuSize + 3) {
+                  setError("");
+                }
               }}
               type="number"
+              min={suggestedGpuSize || 1}
+              max={suggestedGpuSize ? suggestedGpuSize + 3 : undefined}
             />
+            <span style={{ color: '#64748b', fontSize: '0.75rem', textAlign: 'center' }}>
+              You can request up to {suggestedGpuSize + 3}GB for now.
+            </span>
           </div>
         )}
 
@@ -131,6 +214,8 @@ export default function Receive({ user }) {
               <div className="node-info">
                 <span className="node-name">{job.code}</span>
                 <span className="node-meta">
+                  {job.metadata?.sourceFile || job.metadata?.taskLabel || "Manual task"}
+                  {" • "}
                   {job.metadata?.gpu
                     ? `${job.metadata.gpuSize || 0}GB GPU`
                     : "Standard CPU job"}
