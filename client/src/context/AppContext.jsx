@@ -2,10 +2,23 @@ import { createContext, useState, useCallback } from 'react';
 import * as api from '../services/api';
 
 export const AppContext = createContext();
+const STORAGE_KEY = 'cloudless-user';
+
+const loadStoredUser = () => {
+    try {
+        if (typeof window === 'undefined') {
+            return null;
+        }
+        const raw = window.localStorage.getItem(STORAGE_KEY);
+        return raw ? JSON.parse(raw) : null;
+    } catch {
+        return null;
+    }
+};
 
 export function AppProvider({ children }) {
-    const [user, setUser] = useState(null);
-    const [jobs, setJobs] = useState([]);
+    const [user, setUser] = useState(loadStoredUser);
+    const [jobs, setJobs] = useState({ pending: [], active: {}, completed: {} });
     const [nodes, setNodes] = useState({});
     const [logs, setLogs] = useState([]);
     const [loading, setLoading] = useState(false);
@@ -36,16 +49,77 @@ export function AppProvider({ children }) {
         }
     }, []);
 
-    const submitNewJob = useCallback(async (code, language) => {
+    const submitNewJob = useCallback(async (jobPayload) => {
         try {
             setLoading(true);
-            const job = await api.submitJob(code, language);
-            setJobs((prev) => [...prev, job]);
+            const response = await api.submitJob(jobPayload);
+            const job = response.job || response;
+            setJobs((prev) => ({
+                ...prev,
+                pending: [job, ...(prev.pending || [])],
+            }));
             setError(null);
             return job;
         } catch (err) {
             setError(err.message);
             console.error('Error submitting job:', err);
+            throw err;
+        } finally {
+            setLoading(false);
+        }
+    }, []);
+
+    const refreshDashboard = useCallback(async () => {
+        try {
+            setLoading(true);
+            const [jobsData, nodesData] = await Promise.all([
+                api.getAllJobs(),
+                api.getNodes(),
+            ]);
+            setJobs(jobsData);
+            setNodes(nodesData);
+            setError(null);
+        } catch (err) {
+            setError(err.message);
+            console.error('Error refreshing dashboard:', err);
+        } finally {
+            setLoading(false);
+        }
+    }, []);
+
+    const registerSharedNode = useCallback(async ({ workerId, ram, hasGpu, username }) => {
+        try {
+            setLoading(true);
+            const response = await api.registerNode({
+                worker_id: workerId,
+                ram,
+                status: 'idle',
+                capabilities: {
+                    gpu: hasGpu,
+                    sharedBy: username,
+                },
+            });
+
+            setNodes((prev) => ({
+                ...prev,
+                [workerId]: {
+                    ...(prev[workerId] || {}),
+                    ram,
+                    status: 'idle',
+                    lastSeen: Date.now(),
+                    cpu_usage: prev[workerId]?.cpu_usage || 0,
+                    ram_usage: prev[workerId]?.ram_usage || 0,
+                    capabilities: {
+                        gpu: hasGpu,
+                        sharedBy: username,
+                    },
+                },
+            }));
+            setError(null);
+            return response;
+        } catch (err) {
+            setError(err.message);
+            console.error('Error registering node:', err);
             throw err;
         } finally {
             setLoading(false);
@@ -58,12 +132,18 @@ export function AppProvider({ children }) {
 
     const login = useCallback((userData) => {
         setUser(userData);
+        if (typeof window !== 'undefined') {
+            window.localStorage.setItem(STORAGE_KEY, JSON.stringify(userData));
+        }
         setError(null);
     }, []);
 
     const logout = useCallback(() => {
         setUser(null);
-        setJobs([]);
+        if (typeof window !== 'undefined') {
+            window.localStorage.removeItem(STORAGE_KEY);
+        }
+        setJobs({ pending: [], active: {}, completed: {} });
         setNodes({});
         setLogs([]);
     }, []);
@@ -77,7 +157,9 @@ export function AppProvider({ children }) {
         error,
         fetchJobs,
         fetchNodes,
+        refreshDashboard,
         submitNewJob,
+        registerSharedNode,
         addLog,
         login,
         logout,

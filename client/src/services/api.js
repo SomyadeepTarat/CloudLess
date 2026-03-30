@@ -7,30 +7,50 @@ export const API_ENDPOINTS = {
     LOGS: `${API_BASE_URL}/logs`,
 };
 
+const parseResponse = async (response) => {
+    const data = await response.json().catch(() => null);
+
+    if (!response.ok) {
+        const message = data?.error || data?.message || 'Request failed';
+        throw new Error(message);
+    }
+
+    return data;
+};
+
 // Job APIs
-export const submitJob = async (code, language) => {
+export const submitJob = async ({ code, language, priority = 0, metadata = {} }) => {
     const response = await fetch(`${API_ENDPOINTS.JOBS}/job`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code, language, priority: 0 }),
+        body: JSON.stringify({ code, language, priority, metadata }),
     });
-    return response.json();
+    return parseResponse(response);
 };
 
 export const getAllJobs = async () => {
     const response = await fetch(`${API_ENDPOINTS.JOBS}/all`);
-    return response.json();
+    return parseResponse(response);
 };
 
 export const getJobStatus = async (jobId) => {
     const response = await fetch(`${API_ENDPOINTS.JOBS}/status/${jobId}`);
-    return response.json();
+    return parseResponse(response);
 };
 
 // Node APIs
 export const getNodes = async () => {
     const response = await fetch(`${API_ENDPOINTS.NODES}/all`);
-    return response.json();
+    return parseResponse(response);
+};
+
+export const registerNode = async ({ worker_id, cpu = 0, ram = 0, status = 'idle', capabilities = {} }) => {
+    const response = await fetch(`${API_ENDPOINTS.NODES}/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ worker_id, cpu, ram, status, capabilities }),
+    });
+    return parseResponse(response);
 };
 
 // Health check
@@ -43,7 +63,7 @@ export const healthCheck = async () => {
     }
 };
 
-export default {
+const api = {
     API_BASE_URL,
     WS_URL,
     API_ENDPOINTS,
@@ -51,5 +71,8 @@ export default {
     getAllJobs,
     getJobStatus,
     getNodes,
+    registerNode,
     healthCheck,
 };
+
+export default api;
