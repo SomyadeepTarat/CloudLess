@@ -25,7 +25,7 @@ export default function Dashboard({ user }) {
 
     const intervalId = window.setInterval(() => {
       refreshDashboard();
-    }, 15000);
+    }, 4000);
 
     return () => window.clearInterval(intervalId);
   }, [refreshDashboard]);

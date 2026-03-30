@@ -2,8 +2,11 @@ import { useContext, useMemo, useRef, useState } from "react";
 import AppContext from "../context/AppContext";
 import * as api from "../services/api";
 
+const getNodeType = (node) => node?.capabilities?.gpu ? "GPU" : "CPU";
+
 export default function Receive({ user }) {
   const [selectedFile, setSelectedFile] = useState(null);
+  const [selectedNodeId, setSelectedNodeId] = useState("");
   const [gpu, setGpu] = useState(false);
   const [gpuSize, setGpuSize] = useState("");
   const [suggestedGpuSize, setSuggestedGpuSize] = useState(0);
@@ -12,8 +15,16 @@ export default function Receive({ user }) {
   const [analysisLoading, setAnalysisLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
-  const { jobs, loading, submitNewJob } = useContext(AppContext);
+  const { jobs, nodes, loading, submitNewJob } = useContext(AppContext);
   const fileInputRef = useRef(null);
+
+  const availableNodes = useMemo(
+    () =>
+      Object.entries(nodes || {})
+        .filter(([, node]) => node?.available_slots > 0 || node?.status !== "busy")
+        .map(([id, node]) => ({ id, ...node })),
+    [nodes]
+  );
 
   const jobHistory = useMemo(() => {
     const pending = Array.isArray(jobs.pending) ? jobs.pending : [];
@@ -62,6 +73,8 @@ export default function Receive({ user }) {
   };
 
   const handleSubmit = async () => {
+    const selectedNode = availableNodes.find((node) => node.id === selectedNodeId);
+
     if (!selectedFile) {
       setError("Upload a Python file to submit a job");
       setSuccess("");
@@ -84,6 +97,16 @@ export default function Receive({ user }) {
       setSuccess("");
       return;
     }
+    if (selectedNodeId && !selectedNode) {
+      setError("Selected node is no longer available");
+      setSuccess("");
+      return;
+    }
+    if (gpu && selectedNode && !selectedNode.capabilities?.gpu) {
+      setError("The selected node does not provide GPU compute");
+      setSuccess("");
+      return;
+    }
     if (gpu && parseFloat(gpuSize) > suggestedGpuSize + 3) {
       setError(`GPU Size cannot be more than ${suggestedGpuSize + 3}GB for this file`);
       setSuccess("");
@@ -103,7 +126,7 @@ export default function Receive({ user }) {
 
       const job = await submitNewJob({
         code: jobCode,
-        language: gpu ? "gpu" : "cpu",
+        language: "python",
         priority: gpu ? 1 : 0,
         metadata: {
           gpu,
@@ -112,11 +135,13 @@ export default function Receive({ user }) {
           requestedBy: user?.username || "anonymous",
           sourceFile: uploadedFileName,
           taskLabel: uploadedFileName,
+          preferredNodeId: selectedNodeId || null,
         },
       });
 
       setSuccess(`Queued ${uploadedFileName || job.code}`);
       setSelectedFile(null);
+      setSelectedNodeId("");
       setGpu(false);
       setGpuSize("");
       setSuggestedGpuSize(0);
@@ -136,7 +161,7 @@ export default function Receive({ user }) {
       <div className="card" style={{ maxWidth: '600px' }}>
         <h2 className="card-title">Submit a Job</h2>
         <p className="card-desc">
-          Enter your script name and resource needs. It will be picked up by an available node.
+          Upload your Python file, choose a shared node if you want a specific machine, and the worker on that system will execute it.
         </p>
 
         <div className="form-group" style={{ alignItems: 'center' }}>
@@ -258,6 +283,46 @@ export default function Receive({ user }) {
         </button>
       </div>
 
+      <div className="card" style={{ maxWidth: '1000px', width: '100%' }}>
+        <h2 className="card-title">Available Nodes</h2>
+        <p className="card-desc">
+          Click a node to target that specific machine. If you leave it unselected, the scheduler will choose any compatible worker.
+        </p>
+
+        <div className="node-list">
+          {availableNodes.length === 0 && (
+            <div className="empty-state">No shared nodes are available right now.</div>
+          )}
+          {availableNodes.map((node) => {
+            const isSelected = selectedNodeId === node.id;
+
+            return (
+              <button
+                key={node.id}
+                type="button"
+                className={`node-item selectable-node ${isSelected ? "selected" : ""}`}
+                onClick={() => setSelectedNodeId((prev) => prev === node.id ? "" : node.id)}
+              >
+                <div className={`badge ${getNodeType(node) === "GPU" ? "badge-purple" : ""}`}>
+                  {getNodeType(node)}
+                </div>
+                <div className="node-info" style={{ alignItems: 'flex-start' }}>
+                  <span className="node-name">{node.id}</span>
+                  <span className="node-meta">
+                    {node.ram || 0}GB RAM • {node.available_slots || 0} slots • {node.capabilities?.sharedBy || node.capabilities?.hostname || "Unknown user"}
+                  </span>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+        {selectedNodeId && (
+          <span style={{ color: '#d8b4fe', fontSize: '0.8rem', textAlign: 'center' }}>
+            Selected node: {selectedNodeId}
+          </span>
+        )}
+      </div>
+
       <div style={{ width: '100%', maxWidth: '1000px' }}>
         <h3 className="section-title">Job History</h3>
         <div className="history-list">
@@ -273,6 +338,8 @@ export default function Receive({ user }) {
                 <span className="node-name">{job.code}</span>
                 <span className="node-meta">
                   {job.metadata?.sourceFile || job.metadata?.taskLabel || "Manual task"}
+                  {" • "}
+                  {job.metadata?.preferredNodeId || "Auto-selected node"}
                   {" • "}
                   {job.metadata?.gpu
                     ? `${job.metadata.gpuSize || 0}GB GPU`

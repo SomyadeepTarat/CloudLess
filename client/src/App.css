@@ -225,6 +225,17 @@
   margin-bottom: 0.75rem;
 }
 
+.selectable-node {
+  width: 100%;
+  border: 1px solid transparent;
+  text-align: left;
+}
+
+.selectable-node.selected {
+  border-color: rgba(216, 180, 254, 0.55);
+  background-color: rgba(216, 180, 254, 0.08);
+}
+
 .badge {
   padding: 0.25rem 0.75rem;
   border-radius: 0.5rem;

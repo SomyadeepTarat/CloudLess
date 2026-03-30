@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { WS_URL } from './api';
 
 const useSocket = (url) => {
     const [socket, setSocket] = useState(null);
@@ -6,7 +7,7 @@ const useSocket = (url) => {
     const [connected, setConnected] = useState(false);
 
     useEffect(() => {
-        const wsUrl = process.env.REACT_APP_WS_URL || 'ws://localhost:5001';
+        const wsUrl = url || WS_URL;
         const ws = new WebSocket(wsUrl);
 
         ws.onopen = () => {

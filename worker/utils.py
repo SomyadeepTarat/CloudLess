@@ -1,4 +1,6 @@
 import datetime
+import os
+import socket
 import psutil
 
 
@@ -15,9 +17,14 @@ def log_error(message):
 
 
 def get_system_stats():
+    virtual_memory = psutil.virtual_memory()
+
     return {
-        "cpu": f"{psutil.cpu_count()} cores",
-        "ram": f"{round(psutil.virtual_memory().total / (1024**3), 2)} GB",
-        "cpu_usage": psutil.cpu_percent(interval=0.5),
-        "ram_usage": psutil.virtual_memory().percent
+        "hostname": socket.gethostname(),
+        "cpu": psutil.cpu_count() or 1,
+        "ram": round(virtual_memory.total / (1024 ** 3), 2),
+        "ram_bytes": virtual_memory.total,
+        "ram_usage": round(virtual_memory.percent, 2),
+        "cpu_usage": round(psutil.cpu_percent(interval=0.2), 2),
+        "has_gpu": os.getenv("HAS_GPU", "false").lower() == "true",
     }

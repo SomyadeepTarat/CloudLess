@@ -24,12 +24,14 @@ function getJobForWorker(workerId) {
 }
 
 function submitResult(workerId, jobId, output, status, timeTaken) {
+    const activeJob = store.activeJobs[jobId] || {};
     const result = {
         worker_id: workerId,
         job_id: jobId,
         output,
         status,
         time_taken: timeTaken,
+        metadata: activeJob.metadata || {},
         completed_at: Date.now()
     };
 
