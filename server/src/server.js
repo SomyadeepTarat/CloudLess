@@ -3,7 +3,7 @@ const app = require('./app');
 const { initWebSocket } = require('./websocket/socketserver');
 const { removeDeadNodes } = require('./services/nodeservice');
 
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 5001;
 
 const server = http.createServer(app);
 
