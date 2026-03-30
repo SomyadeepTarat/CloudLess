@@ -5,6 +5,7 @@ export const API_ENDPOINTS = {
     JOBS: `${API_BASE_URL}/jobs`,
     NODES: `${API_BASE_URL}/nodes`,
     LOGS: `${API_BASE_URL}/logs`,
+    RECOMMENDER: `${API_BASE_URL}/recommender`,
 };
 
 const parseResponse = async (response) => {
@@ -53,6 +54,15 @@ export const registerNode = async ({ worker_id, cpu = 0, ram = 0, status = 'idle
     return parseResponse(response);
 };
 
+export const recommendResources = async ({ code, filename }) => {
+    const response = await fetch(`${API_ENDPOINTS.RECOMMENDER}/resources`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code, filename }),
+    });
+    return parseResponse(response);
+};
+
 // Health check
 export const healthCheck = async () => {
     try {
@@ -72,6 +82,7 @@ const api = {
     getJobStatus,
     getNodes,
     registerNode,
+    recommendResources,
     healthCheck,
 };
 

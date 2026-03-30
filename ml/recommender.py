@@ -2,11 +2,15 @@ import joblib
 import sys
 import ast
 import os
+import json
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+MODEL_PATH = os.path.join(BASE_DIR, "ram_model.pkl")
 
 # -----------------------------
 # LOAD TRAINED MODEL
 # -----------------------------
-model = joblib.load("ram_model.pkl")  # save your model first!
+model = joblib.load(MODEL_PATH)
 
 # -----------------------------
 # FEATURE EXTRACTION (UPDATED)
@@ -221,6 +225,23 @@ def recommend_system(ram, cpu, gpu):
             "Suggestion": "High-end machine"
         }
 
+
+def analyze_code(code, file_path=None):
+    features = extract_features(code)
+
+    ram = float(model.predict(features)[0])
+    cpu = estimate_cpu(features)
+    gpu = bool(needs_gpu(features))
+    system = recommend_system(ram, cpu, gpu)
+
+    return {
+        "file_path": file_path,
+        "predicted_ram_mb": round(ram, 2),
+        "cpu_load": cpu,
+        "gpu_needed": gpu,
+        "system": system
+    }
+
 # -----------------------------
 # MAIN FUNCTION
 # -----------------------------
@@ -235,38 +256,44 @@ def analyze_file(file_path):
             file_path = os.path.join("ml", file_path)
 
     if not os.path.exists(file_path):
-        print(f"Error: File not found: {file_path}")
-        return
+        raise FileNotFoundError(f"File not found: {file_path}")
 
     with open(file_path, "r") as f:
         code = f.read()
 
-    features = extract_features(code)
-
-    # Predict RAM
-    ram = model.predict(features)[0]
-
-    # Estimate CPU + GPU
-    cpu = estimate_cpu(features)
-    gpu = needs_gpu(features)
-
-    # Recommend system
-    system = recommend_system(ram, cpu, gpu)
+    result = analyze_code(code, file_path)
 
     print("\n===== ANALYSIS =====")
-    print(f"Predicted RAM: {ram:.2f} MB")
-    print(f"CPU Load: {cpu}")
-    print(f"GPU Needed: {'Yes' if gpu else 'No'}")
+    print(f"Predicted RAM: {result['predicted_ram_mb']:.2f} MB")
+    print(f"CPU Load: {result['cpu_load']}")
+    print(f"GPU Needed: {'Yes' if result['gpu_needed'] else 'No'}")
 
     print("\n===== RECOMMENDED SYSTEM =====")
-    for k, v in system.items():
+    for k, v in result["system"].items():
         print(f"{k}: {v}")
+
+    return result
 
 # -----------------------------
 # RUN FROM TERMINAL
 # -----------------------------
 if __name__ == "__main__":
-    if len(sys.argv) < 2:
+    args = sys.argv[1:]
+    json_mode = False
+
+    if args and args[0] == "--json":
+        json_mode = True
+        args = args[1:]
+
+    if len(args) < 1:
         print("Usage: python recommender.py <file.py>")
     else:
-        analyze_file(sys.argv[1])
+        try:
+            result = analyze_file(args[0])
+            if json_mode:
+                print(json.dumps(result))
+        except Exception as exc:
+            if json_mode:
+                print(json.dumps({"error": str(exc)}))
+                sys.exit(1)
+            raise

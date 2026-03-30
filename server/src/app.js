@@ -4,6 +4,7 @@ const cors = require('cors');
 const logRoutes = require('./routes/logroutes');
 const nodeRoutes = require('./routes/noderoutes');
 const jobRoutes = require('./routes/jobroutes');
+const recommenderRoutes = require('./routes/recommenderroutes');
 
 const app = express();
 
@@ -17,5 +18,6 @@ app.get('/', (req, res) => {
 app.use('/nodes', nodeRoutes);
 app.use('/jobs', jobRoutes);
 app.use('/logs', logRoutes);
+app.use('/recommender', recommenderRoutes);
 
 module.exports = app;
