@@ -65,3 +65,18 @@ exports.stopNode = async (req, res) => {
         res.status(500).json({ error: error.message || 'Unable to stop node' });
     }
 };
+
+exports.setOwnerShared = async (req, res) => {
+    const { owner, shared } = req.body;
+
+    if (!owner) {
+        return res.status(400).json({ error: 'owner is required' });
+    }
+
+    try {
+        const updated = await nodeService.setOwnerShared(owner, shared);
+        res.json({ owner, shared: Boolean(shared), updated });
+    } catch (error) {
+        res.status(500).json({ error: error.message || 'Unable to update share status' });
+    }
+};

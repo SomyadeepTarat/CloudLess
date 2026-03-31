@@ -8,12 +8,14 @@ async function registerNode(workerId, cpu = 0, ram = 0, status = 'idle', capabil
             store.getNodes(),
             store.getDisabledWorkers(),
         ]);
+        const existingNode = nodes[workerId] || {};
         delete disabledWorkers[workerId];
         nodes[workerId] = {
             cpu,
             ram,
             status,
             capabilities,
+            published: typeof existingNode.published === 'boolean' ? existingNode.published : false,
             max_workers: Number(maxWorkers) > 0 ? Number(maxWorkers) : 1,
             available_slots: Number(maxWorkers) > 0 ? Number(maxWorkers) : 1,
             lastSeen: Date.now(),
@@ -100,4 +102,22 @@ async function stopNode(workerId) {
     return true;
 }
 
-module.exports = { registerNode, heartbeat, getAllNodes, removeDeadNodes, stopNode };
+async function setOwnerShared(owner, shared) {
+    if (!owner) return 0;
+
+    let updatedCount = 0;
+    await store.withLock(async () => {
+        const nodes = await store.getNodes();
+        for (const nodeId of Object.keys(nodes)) {
+            if ((nodes[nodeId].capabilities?.sharedBy || '') === owner) {
+                nodes[nodeId].published = Boolean(shared);
+                updatedCount += 1;
+            }
+        }
+        await store.setNodes(nodes);
+    });
+
+    return updatedCount;
+}
+
+module.exports = { registerNode, heartbeat, getAllNodes, removeDeadNodes, stopNode, setOwnerShared };

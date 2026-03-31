@@ -22,7 +22,7 @@ export default function Receive({ user }) {
   const availableNodes = useMemo(
     () =>
       Object.entries(nodes || {})
-        .filter(([, node]) => node?.available_slots > 0 || node?.status !== "busy")
+        .filter(([, node]) => node?.published && (node?.available_slots > 0 || node?.status !== "busy"))
         .map(([id, node]) => ({ id, ...node })),
     [nodes]
   );

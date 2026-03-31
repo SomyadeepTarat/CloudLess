@@ -96,6 +96,15 @@ export const stopNode = async ({ worker_id }) => {
     return parseResponse(response);
 };
 
+export const setOwnerShared = async ({ owner, shared }) => {
+    const response = await fetch(`${API_ENDPOINTS.NODES}/share`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ owner, shared }),
+    });
+    return parseResponse(response);
+};
+
 export const recommendResources = async ({ code, filename }) => {
     const response = await fetch(`${API_ENDPOINTS.RECOMMENDER}/resources`, {
         method: 'POST',
@@ -124,6 +133,7 @@ const api = {
     getJobStatus,
     getNodes,
     registerNode,
+    setOwnerShared,
     stopNode,
     recommendResources,
     healthCheck,

@@ -89,39 +89,17 @@ export function AppProvider({ children }) {
         }
     }, []);
 
-    const registerSharedNode = useCallback(async ({ workerId, ram, hasGpu, username }) => {
+    const setSharedByOwner = useCallback(async (owner, shared) => {
         try {
             setLoading(true);
-            const response = await api.registerNode({
-                worker_id: workerId,
-                ram,
-                status: 'idle',
-                capabilities: {
-                    gpu: hasGpu,
-                    sharedBy: username,
-                },
-            });
-
-            setNodes((prev) => ({
-                ...prev,
-                [workerId]: {
-                    ...(prev[workerId] || {}),
-                    ram,
-                    status: 'idle',
-                    lastSeen: Date.now(),
-                    cpu_usage: prev[workerId]?.cpu_usage || 0,
-                    ram_usage: prev[workerId]?.ram_usage || 0,
-                    capabilities: {
-                        gpu: hasGpu,
-                        sharedBy: username,
-                    },
-                },
-            }));
+            const response = await api.setOwnerShared({ owner, shared });
+            const nodesData = await api.getNodes();
+            setNodes(nodesData);
             setError(null);
             return response;
         } catch (err) {
             setError(err.message);
-            console.error('Error registering node:', err);
+            console.error('Error updating share state:', err);
             throw err;
         } finally {
             setLoading(false);
@@ -177,7 +155,7 @@ export function AppProvider({ children }) {
         fetchNodes,
         refreshDashboard,
         submitNewJob,
-        registerSharedNode,
+        setSharedByOwner,
         stopSharedNode,
         addLog,
         login,

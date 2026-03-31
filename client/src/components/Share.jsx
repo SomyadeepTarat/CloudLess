@@ -1,84 +1,71 @@
 import { useContext, useMemo } from "react";
 import AppContext from "../context/AppContext";
-import api from "../services/api";
 
 const getNodeType = (node) =>
   node?.capabilities?.gpu ? "GPU" : "CPU";
 
 export default function Share({ user }) {
-  const { nodes, stopSharedNode } = useContext(AppContext);
+  const { nodes, stopSharedNode, setSharedByOwner, loading } = useContext(AppContext);
+  const owner = user?.username || "anonymous";
+
+  const allOwnerNodes = useMemo(
+    () =>
+      Object.entries(nodes || {})
+        .filter(([, node]) => (node?.capabilities?.sharedBy || "") === owner)
+        .map(([id, node]) => ({ id, ...node })),
+    [nodes, owner]
+  );
 
   const availableNodes = useMemo(
     () =>
       Object.entries(nodes || {})
-        .filter(([, node]) => node?.status !== "busy")
+        .filter(([, node]) => node?.published && node?.status !== "busy")
         .map(([id, node]) => ({ id, ...node })),
     [nodes]
   );
 
-  const workerCommand = useMemo(
-    () => `export SERVER_URL="${api.API_BASE_URL}"
-export WORKER_OWNER="${user?.username || "anonymous"}"
-export HAS_GPU=true   # or false
-export MAX_WORKERS=2
-python3 worker.py`,
-    [user]
+  const mySharedNodes = useMemo(
+    () => allOwnerNodes.filter((node) => node.published),
+    [allOwnerNodes]
   );
-
-  const myNodes = useMemo(
-    () =>
-      availableNodes.filter(
-        (node) => node.capabilities?.sharedBy === (user?.username || "anonymous")
-      ),
-    [availableNodes, user]
-  );
-
-  const downloadLauncher = (hasGpu) => {
-    const content = `#!/bin/bash
-cd "$(dirname "$0")"
-export SERVER_URL="${api.API_BASE_URL}"
-export WORKER_OWNER="${user?.username || "anonymous"}"
-export HAS_GPU=${hasGpu ? "true" : "false"}
-export MAX_WORKERS=2
-python3 worker.py
-`;
-    const blob = new Blob([content], { type: "text/x-shellscript" });
-    const url = window.URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = hasGpu ? "start-worker-gpu.command" : "start-worker-cpu.command";
-    anchor.click();
-    window.URL.revokeObjectURL(url);
-  };
-
   return (
     <div className="cards-container">
       <div className="card share-card">
         <div className="card-icon">⬡</div>
-        <h2 className="card-title">Connect This Machine</h2>
+        <h2 className="card-title">Share Your Machine</h2>
         <p className="card-desc">
-          A machine becomes a real shared node only when `worker.py` is running on it. Start the worker on the system you want to contribute.
+          Click Share to publish your connected machine to everyone using the backend. Click Stop Sharing to hide it again.
         </p>
 
         <div className="form-group">
-          <label className="form-label">Run this command on the machine you want to share</label>
-          <pre className="command-box">{workerCommand}</pre>
-          <div className="checkbox-group" style={{ justifyContent: "center", flexWrap: "wrap" }}>
-            <button type="button" className="btn-primary cursor-target" onClick={() => downloadLauncher(true)}>
-              Download GPU Launcher
-            </button>
-            <button type="button" className="btn-primary cursor-target" onClick={() => downloadLauncher(false)}>
-              Download CPU Launcher
-            </button>
-          </div>
-          <span className="feedback success">
-            Logged in as @{user?.username || "anonymous"}. Set `HAS_GPU=true` on GPU systems before starting the worker.
-          </span>
-          {myNodes.length > 0 && (
+          {allOwnerNodes.length > 0 ? (
             <span className="feedback success">
-              Connected now: {myNodes.length} machine{myNodes.length > 1 ? "s" : ""}
+              Connected now: {allOwnerNodes.length} machine{allOwnerNodes.length > 1 ? "s" : ""}
+            </span>
+          ) : (
+            <span className="feedback error">
+              No connected worker found for @{owner}. Start `worker.py` with `WORKER_OWNER="{owner}"` first.
             </span>
           )}
+        </div>
+
+        <div className="checkbox-group" style={{ justifyContent: "center", flexWrap: "wrap" }}>
+          <button
+            type="button"
+            className="btn-primary cursor-target"
+            disabled={loading || allOwnerNodes.length === 0}
+            onClick={() => setSharedByOwner(owner, true)}
+          >
+            {loading ? "Sharing..." : "Share"}
+          </button>
+          <button
+            type="button"
+            className="btn-primary cursor-target"
+            disabled={loading || mySharedNodes.length === 0}
+            onClick={() => setSharedByOwner(owner, false)}
+          >
+            {loading ? "Stopping..." : "Stop Sharing"}
+          </button>
         </div>
       </div>
 
@@ -125,7 +112,7 @@ python3 worker.py
                 </div>
 
                 <span className="node-status-dot" />
-                {node.capabilities?.sharedBy === (user?.username || "anonymous") && (
+                {node.capabilities?.sharedBy === owner && (
                   <button
                     type="button"
                     className="btn-primary cursor-target"
