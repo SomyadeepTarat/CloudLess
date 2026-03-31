@@ -13,9 +13,10 @@ export default function Receive({ user }) {
   const [recommendedRamMb, setRecommendedRamMb] = useState(null);
   const [cpuLoad, setCpuLoad] = useState("");
   const [analysisLoading, setAnalysisLoading] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
-  const { jobs, nodes, loading, submitNewJob } = useContext(AppContext);
+  const { jobs, nodes, submitNewJob } = useContext(AppContext);
   const fileInputRef = useRef(null);
 
   const availableNodes = useMemo(
@@ -27,15 +28,29 @@ export default function Receive({ user }) {
   );
 
   const jobHistory = useMemo(() => {
-    const pending = Array.isArray(jobs.pending) ? jobs.pending : [];
+    const pending = (Array.isArray(jobs.pending) ? jobs.pending : []).map((job) => ({
+      jobId: job.jobId || job.job_id,
+      metadata: job.metadata || {},
+      status: job.status || "pending",
+      assignedNodeId: job.metadata?.preferredNodeId || "Auto-selected node",
+      output: "",
+    }));
+    const active = Object.entries(jobs.active || {}).map(([jobId, job]) => ({
+      jobId,
+      metadata: job.metadata || {},
+      status: "processing",
+      assignedNodeId: job.nodeId || "Assigned node",
+      output: "",
+    }));
     const completed = Object.entries(jobs.completed || {}).map(([jobId, result]) => ({
       jobId,
-      code: result.output || "Completed job",
-      metadata: {},
+      metadata: result.metadata || {},
       status: result.status || "completed",
+      assignedNodeId: result.node_id || result.worker_id || "Unknown node",
+      output: result.output || "",
     }));
 
-    return [...pending, ...completed].slice(0, 8);
+    return [...pending, ...active, ...completed].slice(0, 8);
   }, [jobs]);
 
   const analyzeSelectedFile = async (file) => {
@@ -115,6 +130,7 @@ export default function Receive({ user }) {
     setError("");
 
     try {
+      setIsSubmitting(true);
       const jobCode = await selectedFile.text();
       const uploadedFileName = selectedFile.name;
 
@@ -153,6 +169,8 @@ export default function Receive({ user }) {
     } catch (err) {
       setError(err.message || "Unable to submit job");
       setSuccess("");
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -278,8 +296,8 @@ export default function Receive({ user }) {
         {error && <span style={{ color: '#f87171', fontSize: '0.75rem', textAlign: 'center' }}>{error}</span>}
         {success && <span style={{ color: '#d8b4fe', fontSize: '0.75rem', textAlign: 'center' }}>{success}</span>}
 
-        <button className="btn-primary cursor-target" style={{ background: '#36303c', color: '#b291d9' }} onClick={handleSubmit} disabled={loading}>
-          {loading ? "Submitting..." : "Submit Job"}
+        <button className="btn-primary cursor-target" style={{ background: '#36303c', color: '#b291d9' }} onClick={handleSubmit} disabled={isSubmitting}>
+          {isSubmitting ? "Submitting..." : "Submit Job"}
         </button>
       </div>
 
@@ -330,16 +348,16 @@ export default function Receive({ user }) {
             <div className="empty-state">Your submitted jobs will appear here once they are queued.</div>
           )}
           {jobHistory.map((job) => (
-            <div key={job.jobId || job.code} className="node-item">
+            <div key={job.jobId} className="node-item">
               <div className={`badge ${job.metadata?.gpu ? "badge-purple" : ""}`}>
                 {job.metadata?.gpu ? "GPU" : "CPU"}
               </div>
               <div className="node-info">
-                <span className="node-name">{job.code}</span>
+                <span className="node-name">{job.metadata?.sourceFile || job.metadata?.taskLabel || job.jobId}</span>
                 <span className="node-meta">
-                  {job.metadata?.sourceFile || job.metadata?.taskLabel || "Manual task"}
+                  {(job.status || "pending").toUpperCase()}
                   {" • "}
-                  {job.metadata?.preferredNodeId || "Auto-selected node"}
+                  {job.assignedNodeId || "Auto-selected node"}
                   {" • "}
                   {job.metadata?.gpu
                     ? `${job.metadata.gpuSize || 0}GB GPU`
@@ -347,6 +365,11 @@ export default function Receive({ user }) {
                   {" • "}
                   {job.metadata?.requestedBy || user?.username || "Unknown user"}
                 </span>
+                {job.output && (
+                  <span className="node-meta" style={{ marginTop: '0.35rem', whiteSpace: 'pre-wrap' }}>
+                    Output: {job.output}
+                  </span>
+                )}
               </div>
             </div>
           ))}

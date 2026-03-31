@@ -1,16 +1,12 @@
-import { useContext, useMemo, useState } from "react";
+import { useContext, useMemo } from "react";
 import AppContext from "../context/AppContext";
+import api from "../services/api";
 
 const getNodeType = (node) =>
   node?.capabilities?.gpu ? "GPU" : "CPU";
 
 export default function Share({ user }) {
-  const [ram, setRam] = useState("");
-  const [hasGpu, setHasGpu] = useState(false);
-  const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
-  const { nodes, loading, registerSharedNode } =
-    useContext(AppContext);
+  const { nodes } = useContext(AppContext);
 
   const availableNodes = useMemo(
     () =>
@@ -20,89 +16,32 @@ export default function Share({ user }) {
     [nodes]
   );
 
-  const handleStartSharing = async () => {
-    if (parseFloat(ram) <= 0 || !ram) {
-      setError("RAM must be greater than 0GB");
-      setSuccess("");
-      return;
-    }
-
-    setError("");
-
-    try {
-      const workerId = `${user?.username || "worker"}-${
-        hasGpu ? "gpu" : "cpu"
-      }-${Math.round(parseFloat(ram))}gb`;
-
-      await registerSharedNode({
-        workerId,
-        ram: parseFloat(ram),
-        hasGpu,
-        username: user?.username || "anonymous",
-      });
-
-      setSuccess(`Machine shared as ${workerId}`);
-      setRam("");
-      setHasGpu(false);
-    } catch (err) {
-      setError(err.message || "Unable to start sharing");
-      setSuccess("");
-    }
-  };
+  const workerCommand = useMemo(
+    () => `export SERVER_URL="${api.API_BASE_URL}"
+export HAS_GPU=true   # or false
+export MAX_WORKERS=2
+python3 worker.py`,
+    []
+  );
 
   return (
     <div className="cards-container">
-      {/* Share your machine */}
       <div className="card share-card">
         <div className="card-icon">⬡</div>
-        <h2 className="card-title">Share Your Machine</h2>
+        <h2 className="card-title">Connect This Machine</h2>
         <p className="card-desc">
-          Register as a worker node. Idle jobs from the queue will run on your machine.
+          A machine becomes a real shared node only when `worker.py` is running on it. Start the worker on the system you want to contribute.
         </p>
 
         <div className="form-group">
-          <label className="form-label">RAM to share (GB)</label>
-          <div className="input-wrapper">
-            <input
-              placeholder="e.g. 8"
-              value={ram}
-              onChange={(e) => {
-                setRam(e.target.value);
-                if (parseFloat(e.target.value) > 0) setError("");
-              }}
-              type="number"
-              min="1"
-            />
-            <span className="input-unit">GB</span>
-          </div>
-
-          {error && <span className="feedback error">{error}</span>}
-          {success && <span className="feedback success">{success}</span>}
+          <label className="form-label">Run this command on the machine you want to share</label>
+          <pre className="command-box">{workerCommand}</pre>
+          <span className="feedback success">
+            Logged in as @{user?.username || "anonymous"}. Set `HAS_GPU=true` on GPU systems before starting the worker.
+          </span>
         </div>
-
-        <div className="checkbox-group">
-          <input
-            id="hasgpu"
-            type="checkbox"
-            checked={hasGpu}
-            onChange={(e) => setHasGpu(e.target.checked)}
-          />
-          <label htmlFor="hasgpu" className="checkbox-label">
-            I have a GPU
-          </label>
-          {hasGpu && <span className="gpu-tag">+priority</span>}
-        </div>
-
-        <button
-          className="btn-primary cursor-target"
-          onClick={handleStartSharing}
-          disabled={loading}
-        >
-          {loading ? "Starting..." : "Start Sharing"}
-        </button>
       </div>
 
-      {/* Available nodes */}
       <div className="card nodes-card">
         <div className="card-icon">◈</div>
 
@@ -141,7 +80,7 @@ export default function Share({ user }) {
                   <span className="node-name">{node.id}</span>
                   <span className="node-meta">
                     {node.ram || 0}GB RAM · @
-                    {node.capabilities?.sharedBy || "unknown"}
+                    {node.capabilities?.sharedBy || node.capabilities?.hostname || "unknown"}
                   </span>
                 </div>
 
