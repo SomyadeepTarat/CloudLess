@@ -2,7 +2,7 @@ const store = require('../data/store');
 const scheduler = require('./schedulerservice');
 const { v4: uuidv4 } = require('uuid');
 
-function submitJob({ job_id, code, language, priority = 0, metadata = {} }) {
+async function submitJob({ job_id, code, language, priority = 0, metadata = {} }) {
     const id = job_id || uuidv4();
     const job = {
         jobId: id,
@@ -15,7 +15,7 @@ function submitJob({ job_id, code, language, priority = 0, metadata = {} }) {
         created_at: Date.now()
     };
 
-    scheduler.addJob(job);
+    await scheduler.addJob(job);
     return job;
 }
 
@@ -23,8 +23,9 @@ function getJobForWorker(workerId) {
     return scheduler.assignJob(workerId);
 }
 
-function submitResult(workerId, jobId, output, status, timeTaken) {
-    const activeJob = store.activeJobs[jobId] || {};
+async function submitResult(workerId, jobId, output, status, timeTaken) {
+    const activeJobs = await store.getActiveJobs();
+    const activeJob = activeJobs[jobId] || {};
     const result = {
         worker_id: workerId,
         job_id: jobId,
@@ -35,28 +36,40 @@ function submitResult(workerId, jobId, output, status, timeTaken) {
         completed_at: Date.now()
     };
 
-    scheduler.completeJob(workerId, jobId, result);
+    await scheduler.completeJob(workerId, jobId, result);
     return result;
 }
 
-function getAllJobs() {
+async function getAllJobs() {
+    const [pending, active, completed] = await Promise.all([
+        store.getJobQueue(),
+        store.getActiveJobs(),
+        store.getResults(),
+    ]);
+
     return {
-        pending: store.jobQueue,
-        active: store.activeJobs,
-        completed: store.results
+        pending,
+        active,
+        completed
     };
 }
 
-function getJobStatus(jobId) {
-    if (store.results[jobId]) {
-        return { status: 'completed', result: store.results[jobId] };
+async function getJobStatus(jobId) {
+    const [results, activeJobs, jobQueue] = await Promise.all([
+        store.getResults(),
+        store.getActiveJobs(),
+        store.getJobQueue(),
+    ]);
+
+    if (results[jobId]) {
+        return { status: 'completed', result: results[jobId] };
     }
 
-    if (store.activeJobs[jobId]) {
+    if (activeJobs[jobId]) {
         return { status: 'processing' };
     }
 
-    const pending = store.jobQueue.find(j => j.jobId === jobId);
+    const pending = jobQueue.find((j) => j.jobId === jobId);
     if (pending) {
         return { status: 'pending' };
     }

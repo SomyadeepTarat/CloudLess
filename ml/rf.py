@@ -221,6 +221,3 @@ def predict_file(file_path):
 # STEP 9: TEST ON A FILE
 # -----------------------------
 # Change this to any file you want
-
-import joblib
-joblib.dump(model, "ram_model.pkl")

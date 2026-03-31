@@ -1,10 +1,10 @@
 const store = require('../data/store');
 
-exports.getSystemStats = (req, res) => {
-    res.json({
-        totalNodes: Object.keys(store.nodes).length,
-        activeJobs: Object.keys(store.activeJobs).length,
-        pendingJobs: store.jobQueue.length,
-        completedJobs: Object.keys(store.results).length
-    });
+exports.getSystemStats = async (req, res) => {
+    try {
+        const stats = await store.getStats();
+        res.json(stats);
+    } catch (error) {
+        res.status(500).json({ error: error.message || 'Unable to fetch stats' });
+    }
 };

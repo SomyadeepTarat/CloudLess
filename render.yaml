@@ -11,6 +11,16 @@ services:
         value: 5001
       - key: PYTHON_BIN
         value: /usr/bin/python3
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: cloudless-redis
+          property: connectionString
+
+  - type: redis
+    name: cloudless-redis
+    plan: starter
+    ipAllowList: []
 
   - type: web
     name: cloudless-client
@@ -21,6 +31,6 @@ services:
     autoDeploy: true
     envVars:
       - key: REACT_APP_API_URL
-        value: https://cloudless-server.onrender.com
+        value: https://cloudless-rb2w.onrender.com
       - key: REACT_APP_WS_URL
-        value: wss://cloudless-server.onrender.com
+        value: wss://cloudless-rb2w.onrender.com

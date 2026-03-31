@@ -1,10 +1,12 @@
 const store = require('../data/store');
 
-function addJob(job) {
-    store.jobQueue.push(job);
-
-    // priority scheduling (higher first)
-    store.jobQueue.sort((a, b) => b.priority - a.priority);
+async function addJob(job) {
+    await store.withLock(async () => {
+        const jobQueue = await store.getJobQueue();
+        jobQueue.push(job);
+        jobQueue.sort((a, b) => b.priority - a.priority);
+        await store.setJobQueue(jobQueue);
+    });
 }
 
 function canWorkerRunJob(node, job) {
@@ -26,51 +28,76 @@ function canWorkerRunJob(node, job) {
     return true;
 }
 
-function assignJob(nodeId) {
-    if (store.jobQueue.length === 0) return null;
-    const node = store.nodes[nodeId];
+async function assignJob(nodeId) {
+    return store.withLock(async () => {
+        const [jobQueue, nodes, activeJobs] = await Promise.all([
+            store.getJobQueue(),
+            store.getNodes(),
+            store.getActiveJobs(),
+        ]);
 
-    if (!node) {
-        return null;
-    }
+        if (jobQueue.length === 0) return null;
 
-    node.worker_id = nodeId;
-    node.id = nodeId;
+        const node = nodes[nodeId];
+        if (!node) {
+            return null;
+        }
 
-    const jobIndex = store.jobQueue.findIndex((job) => canWorkerRunJob(node, job));
-    if (jobIndex === -1) {
-        return null;
-    }
+        node.worker_id = nodeId;
+        node.id = nodeId;
 
-    const [job] = store.jobQueue.splice(jobIndex, 1);
+        const jobIndex = jobQueue.findIndex((job) => canWorkerRunJob(node, job));
+        if (jobIndex === -1) {
+            return null;
+        }
 
-    store.activeJobs[job.jobId] = {
-        nodeId,
-        startTime: Date.now(),
-        metadata: job.metadata || {}
-    };
+        const [job] = jobQueue.splice(jobIndex, 1);
 
-    if (store.nodes[nodeId]) {
-        store.nodes[nodeId].available_slots = Math.max(0, (store.nodes[nodeId].available_slots || 1) - 1);
-        store.nodes[nodeId].status = store.nodes[nodeId].available_slots > 0 ? 'idle' : 'busy';
-    }
+        activeJobs[job.jobId] = {
+            nodeId,
+            startTime: Date.now(),
+            metadata: job.metadata || {}
+        };
 
-    return job;
+        nodes[nodeId].available_slots = Math.max(0, (nodes[nodeId].available_slots || 1) - 1);
+        nodes[nodeId].status = nodes[nodeId].available_slots > 0 ? 'idle' : 'busy';
+
+        await Promise.all([
+            store.setJobQueue(jobQueue),
+            store.setNodes(nodes),
+            store.setActiveJobs(activeJobs),
+        ]);
+
+        return job;
+    });
 }
 
-function completeJob(nodeId, jobId, result) {
-    store.results[jobId] = result;
+async function completeJob(nodeId, jobId, result) {
+    await store.withLock(async () => {
+        const [results, activeJobs, nodes] = await Promise.all([
+            store.getResults(),
+            store.getActiveJobs(),
+            store.getNodes(),
+        ]);
 
-    delete store.activeJobs[jobId];
+        results[jobId] = result;
+        delete activeJobs[jobId];
 
-    if (store.nodes[nodeId]) {
-        const maxWorkers = store.nodes[nodeId].max_workers || 1;
-        store.nodes[nodeId].available_slots = Math.min(
-            maxWorkers,
-            (store.nodes[nodeId].available_slots || 0) + 1
-        );
-        store.nodes[nodeId].status = 'idle';
-    }
+        if (nodes[nodeId]) {
+            const maxWorkers = nodes[nodeId].max_workers || 1;
+            nodes[nodeId].available_slots = Math.min(
+                maxWorkers,
+                (nodes[nodeId].available_slots || 0) + 1
+            );
+            nodes[nodeId].status = 'idle';
+        }
+
+        await Promise.all([
+            store.setResults(results),
+            store.setActiveJobs(activeJobs),
+            store.setNodes(nodes),
+        ]);
+    });
 }
 
 module.exports = { addJob, assignJob, completeJob };

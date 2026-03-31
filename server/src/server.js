@@ -11,7 +11,9 @@ initWebSocket(server);
 
 // check every 5 sec
 setInterval(() => {
-    removeDeadNodes();
+    removeDeadNodes().catch((error) => {
+        console.error('Failed to remove dead nodes:', error);
+    });
 }, 5000);
 
 server.listen(PORT, () => {
