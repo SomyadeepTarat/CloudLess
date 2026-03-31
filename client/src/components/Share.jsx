@@ -8,7 +8,8 @@ export default function Share({ user }) {
   const [hasGpu, setHasGpu] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
-  const { nodes, loading, registerSharedNode } = useContext(AppContext);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const { nodes, registerSharedNode } = useContext(AppContext);
 
   const availableNodes = useMemo(
     () =>
@@ -27,6 +28,7 @@ export default function Share({ user }) {
     setError("");
 
     try {
+      setIsSubmitting(true);
       const workerId = `${user?.username || "worker"}-${hasGpu ? "gpu" : "cpu"}-${Math.round(parseFloat(ram))}gb`;
       await registerSharedNode({
         workerId,
@@ -40,6 +42,8 @@ export default function Share({ user }) {
     } catch (err) {
       setError(err.message || "Unable to start sharing");
       setSuccess("");
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -76,8 +80,8 @@ export default function Share({ user }) {
           <label htmlFor="hasgpu" className="checkbox-label">I have a GPU</label>
         </div>
 
-        <button className="btn-primary" onClick={handleStartSharing} disabled={loading}>
-          {loading ? "STARTING..." : "START SHARING"}
+        <button className="btn-primary" onClick={handleStartSharing} disabled={isSubmitting}>
+          {isSubmitting ? "STARTING..." : "START SHARING"}
         </button>
       </div>
 

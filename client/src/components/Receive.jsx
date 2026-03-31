@@ -13,9 +13,10 @@ export default function Receive({ user }) {
   const [recommendedRamMb, setRecommendedRamMb] = useState(null);
   const [cpuLoad, setCpuLoad] = useState("");
   const [analysisLoading, setAnalysisLoading] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
-  const { jobs, nodes, loading, submitNewJob } = useContext(AppContext);
+  const { jobs, nodes, submitNewJob } = useContext(AppContext);
   const fileInputRef = useRef(null);
 
   const availableNodes = useMemo(
@@ -115,6 +116,7 @@ export default function Receive({ user }) {
     setError("");
 
     try {
+      setIsSubmitting(true);
       const jobCode = await selectedFile.text();
       const uploadedFileName = selectedFile.name;
 
@@ -153,6 +155,8 @@ export default function Receive({ user }) {
     } catch (err) {
       setError(err.message || "Unable to submit job");
       setSuccess("");
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -278,8 +282,8 @@ export default function Receive({ user }) {
         {error && <span style={{ color: '#f87171', fontSize: '0.75rem', textAlign: 'center' }}>{error}</span>}
         {success && <span style={{ color: '#d8b4fe', fontSize: '0.75rem', textAlign: 'center' }}>{success}</span>}
 
-        <button className="btn-primary" style={{ background: '#36303c', color: '#b291d9' }} onClick={handleSubmit} disabled={loading}>
-          {loading ? "Submitting..." : "Submit Job"}
+        <button className="btn-primary" style={{ background: '#36303c', color: '#b291d9' }} onClick={handleSubmit} disabled={isSubmitting}>
+          {isSubmitting ? "Submitting..." : "Submit Job"}
         </button>
       </div>
 
