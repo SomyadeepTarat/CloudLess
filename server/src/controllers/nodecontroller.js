@@ -31,7 +31,11 @@ exports.heartbeat = async (req, res) => {
 
     const ok = await nodeService.heartbeat(worker_id, cpu_usage, ram_usage, status, available_slots);
 
-    if (!ok) {
+    if (ok === 'disabled') {
+        return res.status(410).json({ error: 'Worker stopped by user' });
+    }
+
+    if (ok !== 'ok') {
         return res.status(400).json({ error: 'Invalid worker_id' });
     }
 
@@ -44,5 +48,20 @@ exports.getNodes = async (req, res) => {
         res.json(nodes);
     } catch (error) {
         res.status(500).json({ error: error.message || 'Unable to fetch nodes' });
+    }
+};
+
+exports.stopNode = async (req, res) => {
+    const { worker_id } = req.body;
+
+    if (!worker_id) {
+        return res.status(400).json({ error: 'worker_id is required' });
+    }
+
+    try {
+        await nodeService.stopNode(worker_id);
+        res.json({ message: 'Node stopped', worker_id });
+    } catch (error) {
+        res.status(500).json({ error: error.message || 'Unable to stop node' });
     }
 };

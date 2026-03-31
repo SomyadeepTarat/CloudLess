@@ -13,6 +13,7 @@ WORKER_ID = os.getenv("WORKER_ID", str(uuid.uuid4()))
 POLL_INTERVAL = float(os.getenv("WORKER_POLL_INTERVAL", "1"))
 MAX_WORKERS = int(os.getenv("MAX_WORKERS", "2"))
 REQUEST_TIMEOUT = float(os.getenv("REQUEST_TIMEOUT", "10"))
+WORKER_OWNER = os.getenv("WORKER_OWNER", "")
 
 executor_pool = ThreadPoolExecutor(max_workers=MAX_WORKERS)
 active_jobs = 0
@@ -43,7 +44,8 @@ def register():
             "max_workers": MAX_WORKERS,
             "capabilities": {
                 "gpu": stats["has_gpu"],
-                "hostname": stats["hostname"]
+                "hostname": stats["hostname"],
+                "sharedBy": WORKER_OWNER or stats["hostname"]
             }
         }
         response = requests.post(f"{SERVER_URL}/nodes/register", json=data, timeout=REQUEST_TIMEOUT)
@@ -65,13 +67,18 @@ def heartbeat():
             "available_slots": max(0, MAX_WORKERS - current_active_jobs()),
             "status": status
         }, timeout=REQUEST_TIMEOUT)
+        if response.status_code == 410:
+            log_info("Stop request received from server. Exiting worker.")
+            return "stop"
         if response.status_code == 400:
             log_info("Worker missing on server, registering again.")
             register()
-            return
+            return "retry"
         response.raise_for_status()
+        return "ok"
     except Exception as e:
         log_error(f"Heartbeat failed: {e}")
+        return "error"
 
 
 def get_job():
@@ -144,7 +151,9 @@ def main():
     log_info(f"Worker started with {MAX_WORKERS} parallel job slots.")
 
     while True:
-        heartbeat()
+        heartbeat_state = heartbeat()
+        if heartbeat_state == "stop":
+            break
 
         job = get_job()
         if job:

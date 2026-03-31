@@ -87,6 +87,15 @@ export const registerNode = async ({ worker_id, cpu = 0, ram = 0, status = 'idle
     return parseResponse(response);
 };
 
+export const stopNode = async ({ worker_id }) => {
+    const response = await fetch(`${API_ENDPOINTS.NODES}/stop`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ worker_id }),
+    });
+    return parseResponse(response);
+};
+
 export const recommendResources = async ({ code, filename }) => {
     const response = await fetch(`${API_ENDPOINTS.RECOMMENDER}/resources`, {
         method: 'POST',
@@ -115,6 +124,7 @@ const api = {
     getJobStatus,
     getNodes,
     registerNode,
+    stopNode,
     recommendResources,
     healthCheck,
 };

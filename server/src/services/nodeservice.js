@@ -4,7 +4,11 @@ async function registerNode(workerId, cpu = 0, ram = 0, status = 'idle', capabil
     if (!workerId) return null;
 
     await store.withLock(async () => {
-        const nodes = await store.getNodes();
+        const [nodes, disabledWorkers] = await Promise.all([
+            store.getNodes(),
+            store.getDisabledWorkers(),
+        ]);
+        delete disabledWorkers[workerId];
         nodes[workerId] = {
             cpu,
             ram,
@@ -16,17 +20,27 @@ async function registerNode(workerId, cpu = 0, ram = 0, status = 'idle', capabil
             cpu_usage: 0,
             ram_usage: 0
         };
-        await store.setNodes(nodes);
+        await Promise.all([
+            store.setNodes(nodes),
+            store.setDisabledWorkers(disabledWorkers),
+        ]);
     });
 
     return workerId;
 }
 
 async function heartbeat(workerId, cpu_usage = null, ram_usage = null, status = null, availableSlots = null) {
-    let updated = false;
+    let state = 'missing';
 
     await store.withLock(async () => {
-        const nodes = await store.getNodes();
+        const [nodes, disabledWorkers] = await Promise.all([
+            store.getNodes(),
+            store.getDisabledWorkers(),
+        ]);
+        if (disabledWorkers[workerId]) {
+            state = 'disabled';
+            return;
+        }
         if (!nodes[workerId]) {
             return;
         }
@@ -43,10 +57,10 @@ async function heartbeat(workerId, cpu_usage = null, ram_usage = null, status = 
         }
         nodes[workerId].status = nodes[workerId].status || 'idle';
         await store.setNodes(nodes);
-        updated = true;
+        state = 'ok';
     });
 
-    return updated;
+    return state;
 }
 
 async function getAllNodes() {
@@ -67,4 +81,23 @@ async function removeDeadNodes(timeout = 10000) {
     });
 }
 
-module.exports = { registerNode, heartbeat, getAllNodes, removeDeadNodes };
+async function stopNode(workerId) {
+    if (!workerId) return false;
+
+    await store.withLock(async () => {
+        const [nodes, disabledWorkers] = await Promise.all([
+            store.getNodes(),
+            store.getDisabledWorkers(),
+        ]);
+        delete nodes[workerId];
+        disabledWorkers[workerId] = Date.now();
+        await Promise.all([
+            store.setNodes(nodes),
+            store.setDisabledWorkers(disabledWorkers),
+        ]);
+    });
+
+    return true;
+}
+
+module.exports = { registerNode, heartbeat, getAllNodes, removeDeadNodes, stopNode };

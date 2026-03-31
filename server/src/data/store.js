@@ -6,6 +6,7 @@ const KEYS = {
     jobQueue: 'cloudless:jobQueue',
     activeJobs: 'cloudless:activeJobs',
     results: 'cloudless:results',
+    disabledWorkers: 'cloudless:disabledWorkers',
     lock: 'cloudless:lock',
 };
 
@@ -14,6 +15,7 @@ const memoryState = {
     jobQueue: [],
     activeJobs: {},
     results: {},
+    disabledWorkers: {},
 };
 
 let redisClientPromise = null;
@@ -179,6 +181,21 @@ async function getStats() {
     };
 }
 
+async function getDisabledWorkers() {
+    if (!REDIS_URL) {
+        return memoryState.disabledWorkers;
+    }
+    return readJson(KEYS.disabledWorkers, {});
+}
+
+async function setDisabledWorkers(disabledWorkers) {
+    if (!REDIS_URL) {
+        memoryState.disabledWorkers = disabledWorkers;
+        return;
+    }
+    await writeJson(KEYS.disabledWorkers, disabledWorkers);
+}
+
 module.exports = {
     withLock,
     getNodes,
@@ -189,5 +206,7 @@ module.exports = {
     setActiveJobs,
     getResults,
     setResults,
+    getDisabledWorkers,
+    setDisabledWorkers,
     getStats,
 };

@@ -6,7 +6,7 @@ const getNodeType = (node) =>
   node?.capabilities?.gpu ? "GPU" : "CPU";
 
 export default function Share({ user }) {
-  const { nodes } = useContext(AppContext);
+  const { nodes, stopSharedNode } = useContext(AppContext);
 
   const availableNodes = useMemo(
     () =>
@@ -18,11 +18,38 @@ export default function Share({ user }) {
 
   const workerCommand = useMemo(
     () => `export SERVER_URL="${api.API_BASE_URL}"
+export WORKER_OWNER="${user?.username || "anonymous"}"
 export HAS_GPU=true   # or false
 export MAX_WORKERS=2
 python3 worker.py`,
-    []
+    [user]
   );
+
+  const myNodes = useMemo(
+    () =>
+      availableNodes.filter(
+        (node) => node.capabilities?.sharedBy === (user?.username || "anonymous")
+      ),
+    [availableNodes, user]
+  );
+
+  const downloadLauncher = (hasGpu) => {
+    const content = `#!/bin/bash
+cd "$(dirname "$0")"
+export SERVER_URL="${api.API_BASE_URL}"
+export WORKER_OWNER="${user?.username || "anonymous"}"
+export HAS_GPU=${hasGpu ? "true" : "false"}
+export MAX_WORKERS=2
+python3 worker.py
+`;
+    const blob = new Blob([content], { type: "text/x-shellscript" });
+    const url = window.URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = hasGpu ? "start-worker-gpu.command" : "start-worker-cpu.command";
+    anchor.click();
+    window.URL.revokeObjectURL(url);
+  };
 
   return (
     <div className="cards-container">
@@ -36,9 +63,22 @@ python3 worker.py`,
         <div className="form-group">
           <label className="form-label">Run this command on the machine you want to share</label>
           <pre className="command-box">{workerCommand}</pre>
+          <div className="checkbox-group" style={{ justifyContent: "center", flexWrap: "wrap" }}>
+            <button type="button" className="btn-primary cursor-target" onClick={() => downloadLauncher(true)}>
+              Download GPU Launcher
+            </button>
+            <button type="button" className="btn-primary cursor-target" onClick={() => downloadLauncher(false)}>
+              Download CPU Launcher
+            </button>
+          </div>
           <span className="feedback success">
             Logged in as @{user?.username || "anonymous"}. Set `HAS_GPU=true` on GPU systems before starting the worker.
           </span>
+          {myNodes.length > 0 && (
+            <span className="feedback success">
+              Connected now: {myNodes.length} machine{myNodes.length > 1 ? "s" : ""}
+            </span>
+          )}
         </div>
       </div>
 
@@ -85,6 +125,16 @@ python3 worker.py`,
                 </div>
 
                 <span className="node-status-dot" />
+                {node.capabilities?.sharedBy === (user?.username || "anonymous") && (
+                  <button
+                    type="button"
+                    className="btn-primary cursor-target"
+                    style={{ marginTop: 0, padding: "0.45rem 0.9rem", fontSize: "0.75rem" }}
+                    onClick={() => stopSharedNode(node.id)}
+                  >
+                    Stop Sharing
+                  </button>
+                )}
               </div>
             ))
           )}

@@ -128,6 +128,22 @@ export function AppProvider({ children }) {
         }
     }, []);
 
+    const stopSharedNode = useCallback(async (workerId) => {
+        try {
+            setLoading(true);
+            await api.stopNode({ worker_id: workerId });
+            const nodesData = await api.getNodes();
+            setNodes(nodesData);
+            setError(null);
+        } catch (err) {
+            setError(err.message);
+            console.error('Error stopping node:', err);
+            throw err;
+        } finally {
+            setLoading(false);
+        }
+    }, []);
+
     const addLog = useCallback((logMessage) => {
         setLogs((prev) => [...prev, { ...logMessage, timestamp: Date.now() }]);
     }, []);
@@ -162,6 +178,7 @@ export function AppProvider({ children }) {
         refreshDashboard,
         submitNewJob,
         registerSharedNode,
+        stopSharedNode,
         addLog,
         login,
         logout,
